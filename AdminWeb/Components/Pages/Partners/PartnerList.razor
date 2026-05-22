@@ -48,7 +48,7 @@
     {
         <!-- 현재 정책상 파트너사 등록/수정은 관리자만 허용한다. -->
         <div class="alert alert-secondary">
-            파트너사 등록/수정은 관리자만 가능합니다.
+            파트너사 등록/수정 권한이 없습니다.
         </div>
     }
     else if (_partners.Count == 0)
@@ -107,8 +107,8 @@
     private bool _isLoading = true;
 
     /// <summary>
-    /// 현재 로그인 사용자가 관리자인지 여부.
-    /// UserRole = 1이면 관리자.
+    /// 현재 로그인 사용자가 시스템 또는 관리자 계정인지 여부.
+    /// UserRole = 0이면 System, 1이면 Admin.
     /// </summary>
     private bool _isAdmin;
 
@@ -136,7 +136,8 @@
         }
 
         var role = await AuthStateService.GetUserRoleAsync();
-        _isAdmin = role == 1;
+        // System = 0, Admin = 1
+        _isAdmin = role == 0 || role == 1;
 
         // 정책상 파트너사 목록 관리는 관리자만 사용한다.
         // 담당자에게는 목록을 조회하지 않고 권한 안내만 표시한다.

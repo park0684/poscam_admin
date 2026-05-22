@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using poscam.AuthServer.Models.Enums;
+using System.Data;
 
 namespace poscam.AuthServer.Repositories;
 
@@ -55,7 +56,7 @@ public class AdminUserPermissionRepository : RepositoryBase
     /// 권한명은 DB에서 관리하지 않으며,
     /// 반환값은 AdminPermissionType의 int 값이다.
     /// </summary>
-    public async Task<List<int>> GetPermissionCodesAsync(int userCode)
+    public async Task<List<int>> GetPermissionCodesAsync(int userCode )
     {
         const string sql = @"
             SELECT apu_permission
@@ -76,28 +77,40 @@ public class AdminUserPermissionRepository : RepositoryBase
     }
 
     /// <summary>
-    /// 특정 관리자 계정의 권한을 전달받은 권한 목록으로 교체한다.
+    /// 특정 관리자 계정의 권한을 전체 교체한다.
     /// 
-    /// 기존 권한은 모두 삭제하고,
-    /// permissionCodes에 포함된 권한 코드만 새로 등록한다.
+    /// 기존 권한을 삭제한 뒤 선택된 권한 목록을 다시 저장한다.
+    /// 삭제와 등록은 하나의 트랜잭션으로 처리하여
+    /// 중간 실패 시 권한 데이터가 일부만 저장되는 상황을 방지한다.
+    /// 
+    /// 주의:
+    /// WithConnectionAsync에서 전달되는 conn 타입이 IDbConnection이면
+    /// BeginTransactionAsync를 사용할 수 없다.
+    /// 따라서 conn.Open()과 conn.BeginTransaction()을 사용한다.
     /// </summary>
-    public async Task ReplacePermissionsAsync(
+    public async Task<int> ReplacePermissionsAsync(
         int userCode,
         List<int> permissionCodes,
         int changedBy)
     {
-        await WithConnectionAsync(async conn =>
+        return await WithConnectionAsync(async conn =>
         {
+            // IDbConnection은 BeginTransaction 전에 반드시 Open 상태여야 한다.
+            if (conn.State != ConnectionState.Open)
+            {
+                conn.Open();
+            }
+
             using var transaction = conn.BeginTransaction();
 
             try
             {
                 const string deleteSql = @"
-                DELETE FROM admin_user_permissions
-                WHERE apu_user = @UserCode;
-            ";
+DELETE FROM admin_user_permissions
+WHERE apu_user = @UserCode;
+";
 
-                await conn.ExecuteAsync(
+                var affected = await conn.ExecuteAsync(
                     deleteSql,
                     new
                     {
@@ -108,29 +121,31 @@ public class AdminUserPermissionRepository : RepositoryBase
                 if (permissionCodes != null && permissionCodes.Count > 0)
                 {
                     const string insertSql = @"
-                    INSERT INTO admin_user_permissions
-                    (
-                        apu_user,
-                        apu_permission,
-                        apu_created_by
-                    )
-                    VALUES
-                    (
-                        @UserCode,
-                        @PermissionCode,
-                        @CreatedBy
-                    );
-                ";
+INSERT INTO admin_user_permissions
+(
+    apu_user,
+    apu_permission,
+    apu_created_at,
+    apu_created_by
+)
+VALUES
+(
+    @UserCode,
+    @PermissionCode,
+    NOW(),
+    @ChangedBy
+);
+";
 
                     foreach (var permissionCode in permissionCodes.Distinct())
                     {
-                        await conn.ExecuteAsync(
+                        affected += await conn.ExecuteAsync(
                             insertSql,
                             new
                             {
                                 UserCode = userCode,
                                 PermissionCode = permissionCode,
-                                CreatedBy = changedBy
+                                ChangedBy = changedBy
                             },
                             transaction);
                     }
@@ -138,7 +153,7 @@ public class AdminUserPermissionRepository : RepositoryBase
 
                 transaction.Commit();
 
-                return true;
+                return affected;
             }
             catch
             {

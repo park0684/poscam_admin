@@ -1,0 +1,259 @@
+﻿@page "/admin/accounts"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.UserManage
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<h3>관리자 계정 관리</h3>
+
+<p>관리자 계정을 조회하고 계정 상태 및 권한을 관리합니다.</p>
+
+<div class="mb-3">
+    <button class="btn btn-primary" @onclick="CreateAdminAccount">
+        관리자 계정 등록
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert @MessageCss">
+        @_message
+    </div>
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        검색 조건
+    </div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">계정 상태</label>
+                <select class="form-select" @bind="_selectedUserStatus">
+                    <option value="">전체</option>
+                    <option value="1">정상</option>
+                    <option value="2">일시중지</option>
+                    <option value="3">무효</option>
+                    <option value="9">차단</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <button class="btn btn-outline-primary w-100" @onclick="LoadAdminAccountsAsync">
+                    조회
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <p>관리자 계정 목록을 불러오는 중입니다.</p>
+}
+else if (!_canAccess)
+{
+    <div class="alert alert-warning">
+        관리자 계정 관리 화면에 접근할 수 없습니다.
+    </div>
+}
+else if (_admins.Count == 0)
+{
+    <div class="alert alert-info">
+        조회된 관리자 계정이 없습니다.
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            관리자 계정 목록 총 @_admins.Count
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>관리자명</th>
+                        <th>아이디</th>
+                        <th>연락처</th>
+                        <th>이메일</th>
+                        <th>상태</th>
+                        <th>승인일</th>
+                        <th>등록일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var admin in _admins)
+                    {
+                        <tr style="cursor:pointer" @onclick="() => OpenAdminAccountPopupAsync(admin.UserCode)">
+                            <td>@admin.UserName</td>
+                            <td>@admin.UserId</td>
+                            <td>@(admin.UserCell ?? "-")</td>
+                            <td>@(admin.UserEmail ?? "-")</td>
+                            <td>
+                                <span class="@GetUserStatusBadge(admin.UserStatus)">
+                                    @GetUserStatusName(admin.UserStatus)
+                                </span>
+                            </td>
+                            <td>@(admin.ApprovedAt?.ToString("yyyy-MM-dd") ?? "-")</td>
+                            <td>@admin.UserRdate.ToString("yyyy-MM-dd")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isLoading = true;
+    private bool _canAccess;
+    private bool _isSuccessMessage;
+
+    private int? _selectedUserStatus;
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private List<UserManageListItemDto> _admins = new();
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var role = await AuthStateService.GetUserRoleAsync();
+
+        // System = 0, Admin = 1
+        _canAccess = role == 0 || role == 1;
+
+        if (!_canAccess)
+        {
+            _isLoading = false;
+            SetWarning("관리자 계정 관리 권한이 없습니다.");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await LoadAdminAccountsAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAdminAccountsAsync()
+    {
+        _message = null;
+
+        try
+        {
+            var query = BuildQueryString();
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<UserManageListItemDto>>>(
+                $"/api/admin/accounts{query}");
+
+            if (result == null)
+            {
+                SetWarning("관리자 계정 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") ||
+                    result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _admins = result.Data ?? new List<UserManageListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"관리자 계정 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private string BuildQueryString()
+    {
+        var query = new List<string>();
+
+        if (_selectedUserStatus != null)
+        {
+            query.Add($"userStatus={_selectedUserStatus.Value}");
+        }
+
+        if (query.Count == 0)
+        {
+            return "";
+        }
+
+        return "?" + string.Join("&", query);
+    }
+
+    private async Task CreateAdminAccount()
+    {
+        await JS.InvokeVoidAsync("poscamPopup.openAdminAccountCreate");
+    }
+
+    private async Task OpenAdminAccountPopupAsync(int userCode)
+    {
+        if (userCode <= 0)
+        {
+            return;
+        }
+
+        // 다음 단계에서 popup.js에 openAdminAccountDetail 함수를 추가할 예정.
+        await JS.InvokeVoidAsync("poscamPopup.openAdminAccountDetail", userCode);
+    }
+
+    private string GetUserStatusName(int status)
+    {
+        return status switch
+        {
+            1 => "정상",
+            2 => "일시중지",
+            3 => "무효",
+            9 => "차단",
+            _ => $"기타({status})"
+        };
+    }
+
+    private string GetUserStatusBadge(int status)
+    {
+        return status switch
+        {
+            1 => "badge bg-success",
+            2 => "badge bg-secondary",
+            3 => "badge bg-dark",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

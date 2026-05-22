@@ -93,7 +93,23 @@ public static class MenuConfiguration
                         Order = 4
                     }
                 }
-            }
+            },
+            new MenuItem
+            {
+                Key = "system",
+                Title = "시스템관리",
+                Order = 40,
+                Children = new List<MenuItem>
+                {
+                    new MenuItem
+                    {
+                        Key = "admin-accounts",
+                        Title = "관리자 계정",
+                        Url = "admin/accounts",
+                        Order = 1
+                    }
+                }
+}
         };
     }
 }

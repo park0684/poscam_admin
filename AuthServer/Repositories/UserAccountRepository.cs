@@ -763,8 +763,8 @@ WHERE user_code = @UserCode;
     /// 요청 상태만 Rejected로 바꾼다.
     /// </summary>
     public async Task<int> RejectLatestRequestAsync(
-        int userCode,
-        string? resultMemo)
+    int userCode,
+    string? resultMemo)
     {
         const string sql = @"
 UPDATE users
@@ -772,7 +772,8 @@ SET
     user_request_status = @RequestStatus,
     user_request_result_memo = @ResultMemo,
     user_udate = NOW()
-WHERE user_code = @UserCode;
+WHERE user_code = @UserCode
+  AND user_request_status = @PendingStatus;
 ";
 
         return await WithConnectionAsync(conn =>
@@ -782,6 +783,7 @@ WHERE user_code = @UserCode;
                 {
                     UserCode = userCode,
                     RequestStatus = (int)UserRequestStatus.Rejected,
+                    PendingStatus = (int)UserRequestStatus.Pending,
                     ResultMemo = resultMemo
                 }));
     }
@@ -824,6 +826,44 @@ WHERE user_code = @UserCode
                     ActiveStatus = (int)UserStatus.Active,
                     PendingStatus = (int)UserStatus.Pending,
                     RequestStatus = (int)UserRequestStatus.Completed,
+                    ResultMemo = resultMemo
+                }));
+    }
+
+    /// <summary>
+    /// 사용자의 최근 요청을 처리완료 상태로 변경한다.
+    /// 
+    /// 주의:
+    /// - 이 메서드는 실제 업무 처리를 수행하지 않는다.
+    /// - 정보수정, 비밀번호초기화처럼 실제 처리 API가 요청 상태를 완료로 바꾸지 않는 경우에만 사용한다.
+    /// - 상태 변경 요청은 ChangeUserStatusAsync에서 이미 요청 상태를 Completed로 변경하므로 이 메서드를 중복 호출하지 않는다.
+    /// - user_request_type까지 조건에 포함하여, 조회 이후 요청 유형이 바뀐 경우 잘못 완료 처리되지 않도록 한다.
+    /// </summary>
+    public async Task<int> CompleteLatestRequestAsync(
+        int userCode,
+        int requestType,
+        string? resultMemo)
+    {
+        const string sql = @"
+UPDATE users
+SET
+    user_request_status = @RequestStatus,
+    user_request_result_memo = @ResultMemo,
+    user_udate = NOW()
+WHERE user_code = @UserCode
+  AND user_request_type = @RequestType
+  AND user_request_status = @PendingStatus;
+";
+
+        return await WithConnectionAsync(conn =>
+            conn.ExecuteAsync(
+                sql,
+                new
+                {
+                    UserCode = userCode,
+                    RequestType = requestType,
+                    RequestStatus = (int)UserRequestStatus.Completed,
+                    PendingStatus = (int)UserRequestStatus.Pending,
                     ResultMemo = resultMemo
                 }));
     }
@@ -1054,8 +1094,8 @@ VALUES
     NOW(),
     NULL,
 
-    NULL,
-    NULL,
+    1,
+    2,
     NULL,
     NULL,
     NULL,

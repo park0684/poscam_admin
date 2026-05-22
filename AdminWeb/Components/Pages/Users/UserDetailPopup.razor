@@ -5,6 +5,7 @@
 @using poscam.AdminWeb.Models.Common
 @using poscam.AdminWeb.Models.Partner
 @using poscam.AdminWeb.Models.UserManage
+@using poscam.AdminWeb.Components.Pages.Common
 
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
 @inject poscam.AdminWeb.Services.AuthStateService AuthStateService
@@ -174,13 +175,19 @@
                                                placeholder="상태 변경 사유 또는 처리 메모" />
                                     </div>
 
-                                    <div class="col-md-1">
+                                    <div class="col-md-6">
                                         <div class="d-flex justify-content-end gap-2">
                                             @if (!_editMode)
                                             {
                                                 <button class="btn btn-outline-primary"
                                                         @onclick="EnableEdit">
                                                     수정
+                                                </button>
+
+                                                <button class="btn btn-outline-danger"
+                                                        @onclick="OpenPasswordResetModal"
+                                                        disabled="@_isSaving">
+                                                    비밀번호 초기화
                                                 </button>
                                             }
                                             else
@@ -300,58 +307,83 @@
                             }
                         </div>
                     </div>
-                    <div class="card shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <strong>요청내역</strong>
-                        </div>
+                    @if (CanViewUserRequests)
+                    {
+                        <div class="card shadow-sm mt-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>요청내역</strong>
 
-                        <div class="card-body">
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <label class="form-label">최근 요청 유형</label>
-                                    <input class="form-control"
-                                           value="@GetRequestTypeName(_detail.UserRequestType)"
-                                           readonly />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">요청일</label>
-                                    <input class="form-control"
-                                           value="@(_detail.UserRequestedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
-                                           readonly />
-                                </div>
+                                @if (HasPendingRequest)
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        처리 대기
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">
+                                        처리 요청 없음
+                                    </span>
+                                }
                             </div>
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">최근 요청 사유</label>
-                                    <textarea class="form-control"
+
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">최근 요청 유형</label>
+                                        <input class="form-control"
+                                               value="@GetRequestTypeName(_detail.UserRequestType)"
+                                               readonly />
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label class="form-label">요청일</label>
+                                        <input class="form-control"
+                                               value="@(_detail.UserRequestedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
+                                               readonly />
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label class="form-label">최근 요청 상태</label>
+                                        <input class="form-control"
+                                               value="@GetRequestStatusName(_detail.UserRequestStatus)"
+                                               readonly />
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label class="form-label">승인일</label>
+                                        <input class="form-control"
+                                               value="@(_detail.ApprovedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
+                                               readonly />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">최근 요청 사유</label>
+                                        <textarea class="form-control"
                                       rows="1"
                                       readonly>@_detail.UserRequestReason</textarea>
-                                </div>
-                            </div>
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <label class="form-label">최근 요청 상태</label>
-                                    <input class="form-control"
-                                           value="@GetRequestStatusName(_detail.UserRequestStatus)"
-                                           readonly />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">승인일</label>
-                                    <input class="form-control"
-                                           value="@(_detail.ApprovedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
-                                           readonly />
-                                </div>                               
-                            </div>
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">처리 결과 메모</label>
-                                    <textarea class="form-control"
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">처리 결과 메모</label>
+                                        <textarea class="form-control"
                                       rows="1"
                                       readonly>@_detail.UserRequestResultMemo</textarea>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <button class="btn btn-primary"
+                                            @onclick="OpenRequestProcessModal"
+                                            disabled="@(!CanProcessUserRequest || _isSaving)">
+                                        요청처리
+                                    </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 }
             </div>
         }
@@ -430,9 +462,28 @@
     </div>
 </div>
 
+<PasswordResetModal IsOpen="_showPasswordResetModal"
+                    TargetType="user"
+                    UserCode="@UserCode"
+                    TargetName="@_detail.UserName"
+                    OnClose="ClosePasswordResetModal"
+                    OnCompleted="OnPasswordResetCompleted" />
+
+<UserRequestProcessModal IsOpen="_showRequestProcessModal"
+                            UserCode="@UserCode"
+                            UserName="@_detail.UserName"
+                            RequestType="@_detail.UserRequestType"
+                            RequestStatus="@_detail.UserRequestStatus"
+                            RequestReason="@_detail.UserRequestReason"
+                            RequestedAt="@_detail.UserRequestedAt"
+                            OnClose="CloseRequestProcessModal"
+                            OnCompleted="OnRequestProcessCompleted"
+                            OnEditUserInfoRequested="OpenEditModeFromRequest"
+                            OnPasswordResetRequested="OpenPasswordResetFromRequest" />
+
 <style>
     .user-popup {
-        width: 1420px;
+        width: 860px;
         height: 720px;
         overflow: hidden;
         background-color: #f8f9fa;
@@ -489,12 +540,78 @@
     private string? _processMemo;
     private string? _requestReason;
 
+    // 현재는 System/Admin이면 관리자 기능 사용 가능.
+    // 이후 세부 권한을 프론트에서 받게 되면 이 속성들만 수정하면 됩니다.
+    private bool CanManageUser => _isAdmin;
+    private bool CanResetUserPassword => _isAdmin;
+    /// <summary>
+    /// 담당자 요청내역을 볼 수 있는지 여부.
+    ///
+    /// 현재 정책:
+    /// - System 계정
+    /// - Admin 계정
+    ///
+    /// 담당자 본인은 본인이 등록한 요청이라도 관리자 처리 영역을 볼 필요가 없으므로 제외한다.
+    /// 이후 프론트에서 세부 권한을 받게 되면 이 속성만 수정하면 된다.
+    /// </summary>
+    private bool CanViewUserRequests => _isAdmin;
+
+    /// <summary>
+    /// 현재 담당자에게 처리 대기 중인 요청이 있는지 여부.
+    ///
+    /// 요청 유형/상태 판단은 UserRequestMetadata에서 공통 처리한다.
+    /// </summary>
+    private bool HasPendingRequest =>
+        UserRequestMetadata.IsPendingRequest(
+            _detail.UserRequestType,
+            _detail.UserRequestStatus);
+
+    /// <summary>
+    /// 담당자 요청을 처리할 수 있는지 여부.
+    ///
+    /// 요청 처리 버튼의 활성화 여부에 사용한다.
+    /// 실제 권한 검증은 백엔드 API에서 최종 처리한다.
+    /// </summary>
+    private bool CanProcessUserRequest =>
+        CanViewUserRequests && HasPendingRequest;
+
+    /// <summary>
+    /// 요청처리 모달 표시 여부.
+    ///
+    /// 다음 단계에서 UserRequestProcessModal 컴포넌트와 연결한다.
+    /// </summary>
+    private bool _showRequestProcessModal;
+
+    private bool _completeRequestAfterSave;
+
+    /// <summary>
+    /// 요청처리 모달에서 입력한 처리 메모.
+    ///
+    /// 정보수정 요청 또는 비밀번호 초기화 요청은 실제 처리가 부모 화면에서 이루어지므로,
+    /// 요청처리 모달에서 입력한 메모를 임시 보관했다가 /requests/process 호출 시 사용한다.
+    /// </summary>
+    private string? _requestProcessMemo;
+
     // 본인 계정일 때만 사용하는 비밀번호 변경 입력 상태입니다.
     // 버튼을 누르기 전에는 입력 영역을 숨기고, 버튼 클릭 후에만 표시합니다.
     private bool _showPasswordChange;
     private string? _currentPassword;
     private string? _newPassword;
     private string? _newPasswordConfirm;
+    private bool _showPasswordResetModal;
+    /// <summary>
+    /// 정보수정 요청 처리 흐름에서 수정 모드가 열린 상태인지 여부.
+    ///
+    /// true인 경우 담당자 정보를 저장한 뒤 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    private bool _completeRequestAfterUserSave;
+
+    /// <summary>
+    /// 비밀번호 초기화 요청 처리 흐름에서 비밀번호 초기화 모달이 열린 상태인지 여부.
+    ///
+    /// true인 경우 비밀번호 초기화 완료 후 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    private bool _completeRequestAfterPasswordReset;
 
     private string MessageCss => _isSuccessMessage
         ? "alert-success"
@@ -521,9 +638,10 @@
         }
 
         // 현재 로그인 계정의 권한을 확인합니다.
-        // 관리자만 수정 버튼과 저장 기능을 사용할 수 있습니다.
+        // System 또는 관리자 계정만 수정 버튼과 저장 기능을 사용할 수 있습니다.
         var role = await AuthStateService.GetUserRoleAsync();
-        _isAdmin = role == 1;
+        // System = 0, Admin = 1
+        _isAdmin = role == 0 || role == 1;
 
         // 비밀번호 변경 버튼은 본인 계정에서만 보여야 하므로,
         // 현재 로그인한 사용자의 UserCode를 함께 조회합니다.
@@ -718,7 +836,7 @@
 
         if (!_isAdmin)
         {
-            SetWarning("담당자 정보 수정은 관리자만 가능합니다.");
+            SetWarning("담당자 정보 수정 권한이 없습니다.");
             return;
         }
 
@@ -762,6 +880,20 @@
                 }
             }
 
+            // 정보수정 요청 처리 흐름에서 저장한 경우,
+            // 실제 정보 수정이 완료된 뒤 요청 상태도 처리 완료로 변경한다.
+            if (_completeRequestAfterUserSave && HasPendingRequest)
+            {
+                var completed = await CompleteCurrentRequestAsync(
+                    UserRequestMetadata.GetDefaultProcessMemo(_detail.UserRequestType));
+
+                if (!completed)
+                {
+                    return;
+                }
+
+                _completeRequestAfterUserSave = false;
+            }
             SetSuccess(statusChanged
                 ? "담당자 정보와 상태가 저장되었습니다."
                 : "담당자 정보가 저장되었습니다.");
@@ -1013,6 +1145,207 @@
     }
 
     /// <summary>
+    /// 관리자에 의한 담당자 비밀번호 초기화 모달을 엽니다.
+    ///
+    /// 화면에서는 System/Admin 계정만 접근할 수 있도록 제한하고,
+    /// 실제 세부 권한은 백엔드 API에서 최종 검증합니다.
+    /// </summary>
+    private void OpenPasswordResetModal()
+    {
+        if (!_isAdmin)
+        {
+            SetWarning("담당자 비밀번호 초기화 권한이 없습니다.");
+            return;
+        }
+
+        if (UserCode <= 0)
+        {
+            SetWarning("비밀번호를 초기화할 담당자 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        _showPasswordResetModal = true;
+    }
+    /// <summary>
+    /// 현재 담당자의 처리 대기 요청을 처리완료 상태로 변경한다.
+    ///
+    /// 실제 작업이 완료된 뒤 호출해야 한다.
+    /// 예:
+    /// - 정보수정 저장 완료 후
+    /// - 비밀번호 초기화 완료 후
+    ///
+    /// 상태 변경 요청은 /status API에서 이미 완료 처리하므로 이 메서드를 호출하지 않는다.
+    /// </summary>
+    private async Task<bool> CompleteCurrentRequestAsync(string defaultMemo)
+    {
+        var request = new UserRequestProcessRequest
+        {
+            Memo = string.IsNullOrWhiteSpace(_requestProcessMemo)
+                ? defaultMemo
+                : _requestProcessMemo
+        };
+
+        var result = await ApiClient.PostAsync<UserRequestProcessRequest, ApiResponse<bool>>(
+            $"/api/manage/users/{UserCode}/requests/process",
+            request);
+
+        if (result == null)
+        {
+            SetWarning("요청 처리 응답을 받을 수 없습니다.");
+            return false;
+        }
+
+        if (!result.Success)
+        {
+            SetWarning(result.Message);
+            return false;
+        }
+
+        _requestProcessMemo = null;
+
+        return true;
+    }
+    /// <summary>
+    /// 비밀번호 초기화 모달을 닫습니다.
+    /// </summary>
+    private void ClosePasswordResetModal()
+    {
+        _showPasswordResetModal = false;
+    }
+
+    /// <summary>
+    /// 비밀번호 초기화 완료 후 호출된다.
+    ///
+    /// 일반 비밀번호 초기화인 경우에는 상세정보와 로그만 다시 조회한다.
+    /// 비밀번호 초기화 요청 처리 흐름에서 실행된 경우에는 요청 처리 완료 API까지 호출한다.
+    /// </summary>
+    private async Task OnPasswordResetCompleted()
+    {
+        if (_completeRequestAfterPasswordReset)
+        {
+            var completed = await CompleteCurrentRequestAsync(
+                UserRequestMetadata.GetDefaultProcessMemo(_detail.UserRequestType));
+
+            if (!completed)
+            {
+                return;
+            }
+
+            _completeRequestAfterPasswordReset = false;
+            _showPasswordResetModal = false;
+
+            SetSuccess("비밀번호 초기화 요청이 처리되었습니다.");
+
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+
+            return;
+        }
+
+        SetSuccess("담당자 비밀번호가 초기화되었습니다.");
+
+        await LoadDetailAsync();
+        await LoadLogsAsync();
+    }
+
+    /// <summary>
+    /// 담당자 요청처리 모달을 연다.
+    ///
+    /// 처리 대기 중인 요청이 없으면 모달을 열지 않는다.
+    /// 다음 단계에서 실제 UserRequestProcessModal 컴포넌트와 연결한다.
+    /// </summary>
+    private void OpenRequestProcessModal()
+    {
+        if (!CanViewUserRequests)
+        {
+            SetWarning("담당자 요청내역을 처리할 권한이 없습니다.");
+            return;
+        }
+
+        if (!HasPendingRequest)
+        {
+            SetWarning("처리 대기 중인 요청이 없습니다.");
+            return;
+        }
+
+        _showRequestProcessModal = true;
+    }
+
+    /// <summary>
+    /// 담당자 요청처리 모달을 닫는다.
+    /// </summary>
+    private void CloseRequestProcessModal()
+    {
+        _showRequestProcessModal = false;
+    }
+
+    /// <summary>
+    /// 요청 처리 또는 반려 완료 후 상세정보와 로그를 다시 조회한다.
+    ///
+    /// LoadDetailAsync 내부에서 메시지를 초기화하므로,
+    /// 성공 메시지는 데이터 재조회가 끝난 뒤 설정한다.
+    /// </summary>
+    private async Task OnRequestProcessCompleted()
+    {
+        _showRequestProcessModal = false;
+        _completeRequestAfterUserSave = false;
+        _completeRequestAfterPasswordReset = false;
+        _requestProcessMemo = null;
+
+        await LoadDetailAsync();
+        await LoadLogsAsync();
+
+        SetSuccess("담당자 요청이 처리되었습니다.");
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 정보수정 요청 처리 흐름을 시작한다.
+    ///
+    /// 요청처리 모달에서 전달받은 처리 메모를 보관하고,
+    /// 담당자 상세 화면을 수정 모드로 전환한다.
+    /// 이후 저장 버튼을 누르면 SaveUserAsync에서 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    private void OpenEditModeFromRequest(string? processMemo)
+    {
+        if (!HasPendingRequest)
+        {
+            SetWarning("처리 대기 중인 요청이 없습니다.");
+            return;
+        }
+
+        _showRequestProcessModal = false;
+        _completeRequestAfterUserSave = true;
+        _requestProcessMemo = processMemo;
+        _editMode = true;
+
+        SetWarning("요청 내용을 확인한 뒤 담당자 정보를 수정하고 저장하세요.");
+    }
+
+    /// <summary>
+    /// 비밀번호 초기화 요청 처리 흐름을 시작한다.
+    ///
+    /// 요청처리 모달에서 전달받은 처리 메모를 보관하고,
+    /// 공통 비밀번호 초기화 모달을 연다.
+    /// 비밀번호 초기화가 성공하면 OnPasswordResetCompleted에서 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    private void OpenPasswordResetFromRequest(string? processMemo)
+    {
+        if (!HasPendingRequest)
+        {
+            SetWarning("처리 대기 중인 요청이 없습니다.");
+            return;
+        }
+
+        _showRequestProcessModal = false;
+        _completeRequestAfterPasswordReset = true;
+        _requestProcessMemo = processMemo;
+
+        OpenPasswordResetModal();
+    }
+
+    /// <summary>
     /// 비밀번호 변경 입력값을 초기화합니다.
     /// </summary>
     private void ClearPasswordFields()
@@ -1079,31 +1412,12 @@
 
     private string GetRequestTypeName(int? requestType)
     {
-        return requestType switch
-        {
-            null => "-",
-            1 => "가입승인",
-            2 => "정보수정",
-            3 => "비밀번호초기화",
-            4 => "일시중지",
-            5 => "정상복구",
-            6 => "무효",
-            9 => "차단",
-            _ => $"기타({requestType})"
-        };
+        return UserRequestMetadata.GetRequestTypeName(requestType);
     }
 
     private string GetRequestStatusName(int requestStatus)
     {
-        return requestStatus switch
-        {
-            0 => "요청없음",
-            1 => "요청대기",
-            2 => "처리완료",
-            3 => "반려",
-            9 => "취소",
-            _ => $"기타({requestStatus})"
-        };
+        return UserRequestMetadata.GetRequestStatusName(requestStatus);
     }
 
     private string GetLogTypeName(int logType)

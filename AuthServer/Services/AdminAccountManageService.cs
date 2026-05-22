@@ -194,103 +194,128 @@ public class AdminAccountManageService
     /// 4. 비밀번호 해시 생성
     /// 5. users 테이블에 UserRole.Admin으로 저장
     /// 6. 권한 코드가 전달된 경우 admin_user_permissions에 저장
+    /// 
+    /// 예외 처리:
+    /// - Repository 또는 DB 처리 중 예외가 발생해도 500으로 그대로 노출하지 않는다.
+    /// - ApiResponse.Fail 형태로 반환하여 AdminWeb에서 정상적으로 메시지를 표시할 수 있게 한다.
     /// </summary>
     public async Task<ApiResponse<UserSaveResponse>> CreateAdminAccountAsync(
         AdminAccountCreateRequest request,
         UserAccount loginUser)
     {
-        var permissionResult = await CheckAdminAccountManagePermissionAsync(
-            loginUser);
-
-        if (!permissionResult.Success)
+        try
         {
-            return ApiResponse<UserSaveResponse>.Fail(
-                permissionResult.ErrorCode,
-                permissionResult.Message);
-        }
+            var permissionResult = await CheckAdminAccountManagePermissionAsync(
+                loginUser);
 
-        if (string.IsNullOrWhiteSpace(request.UserId))
-        {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "관리자 로그인 ID를 입력하세요.");
-        }
+            if (!permissionResult.Success)
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    permissionResult.ErrorCode,
+                    permissionResult.Message);
+            }
 
-        if (string.IsNullOrWhiteSpace(request.Password))
-        {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidPassword,
-                "관리자 초기 비밀번호를 입력하세요.");
-        }
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.InvalidLogin,
+                    "관리자 로그인 ID를 입력하세요.");
+            }
 
-        if (string.IsNullOrWhiteSpace(request.UserName))
-        {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "관리자 이름을 입력하세요.");
-        }
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.InvalidPassword,
+                    "관리자 초기 비밀번호를 입력하세요.");
+            }
 
-        if (!IsValidAdminStatus(request.UserStatus))
+            if (string.IsNullOrWhiteSpace(request.UserName))
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.InvalidLogin,
+                    "관리자 이름을 입력하세요.");
+            }
+
+            if (!IsValidAdminStatus(request.UserStatus))
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.ValidationError,
+                    "관리자 계정 상태가 올바르지 않습니다.");
+            }
+
+            var userId = request.UserId.Trim();
+
+            var exists = await _userAccountRepository.ExistsUserIdAsync(userId);
+
+            if (exists)
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.InvalidLogin,
+                    "이미 사용 중인 로그인 ID입니다.");
+            }
+
+            var passwordHash = _passwordHashService.HashPassword(
+                request.Password);
+
+            var adminUser = new UserAccount
+            {
+                PartnerCode = null,
+                UserId = userId,
+                UserPasswordHash = passwordHash,
+                UserName = request.UserName.Trim(),
+                UserCell = request.UserCell?.Trim(),
+                UserEmail = request.UserEmail?.Trim(),
+                UserRole = (int)UserRole.Admin,
+                UserStatus = request.UserStatus,
+                ApprovedBy = loginUser.UserCode,
+                ApprovedAt = DateTime.Now
+            };
+
+            var createdUserCode = await _userAccountRepository.InsertAdminAccountAsync(
+                adminUser);
+
+            if (createdUserCode <= 0)
+            {
+                return ApiResponse<UserSaveResponse>.Fail(
+                    AuthErrorCode.ValidationError,
+                    "관리자 계정 생성에 실패했습니다.");
+            }
+
+            if (request.PermissionCodes != null &&
+                request.PermissionCodes.Count > 0)
+            {
+                var validPermissionCodes = NormalizePermissionCodes(
+                    request.PermissionCodes);
+
+                // 유효한 권한 코드가 있을 때만 권한 저장을 수행한다.
+                // 모든 권한 코드가 유효하지 않은 경우에는 관리자 계정만 생성한다.
+                if (validPermissionCodes.Count > 0)
+                {
+                    await _adminUserPermissionRepository.ReplacePermissionsAsync(
+                        createdUserCode,
+                        validPermissionCodes,
+                        loginUser.UserCode);
+                }
+            }
+
+            return ApiResponse<UserSaveResponse>.Ok(
+                new UserSaveResponse
+                {
+                    UserCode = createdUserCode,
+                    PartnerCode = null,
+                    UserId = userId,
+                    UserName = adminUser.UserName,
+                    Created = true,
+                    Saved = true
+                },
+                "관리자 계정이 생성되었습니다.");
+        }
+        catch (Exception ex)
         {
             return ApiResponse<UserSaveResponse>.Fail(
                 AuthErrorCode.ValidationError,
-                "관리자 계정 상태가 올바르지 않습니다.");
+                $"관리자 계정 생성 중 오류가 발생했습니다. {ex.Message}");
         }
-
-        var userId = request.UserId.Trim();
-
-        var exists = await _userAccountRepository.ExistsUserIdAsync(userId);
-
-        if (exists)
-        {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "이미 사용 중인 로그인 ID입니다.");
-        }
-
-        var passwordHash = _passwordHashService.HashPassword(
-            request.Password);
-
-        var adminUser = new UserAccount
-        {
-            PartnerCode = null,
-            UserId = userId,
-            UserPasswordHash = passwordHash,
-            UserName = request.UserName.Trim(),
-            UserCell = request.UserCell?.Trim(),
-            UserEmail = request.UserEmail?.Trim(),
-            UserRole = (int)UserRole.Admin,
-            UserStatus = request.UserStatus,
-            ApprovedBy = loginUser.UserCode,
-            ApprovedAt = DateTime.Now
-        };
-
-        var createdUserCode = await _userAccountRepository.InsertAdminAccountAsync(
-            adminUser);
-
-        if (request.PermissionCodes != null &&
-            request.PermissionCodes.Count > 0)
-        {
-            var validPermissionCodes = NormalizePermissionCodes(
-                request.PermissionCodes);
-
-            await _adminUserPermissionRepository.ReplacePermissionsAsync(
-                createdUserCode,
-                validPermissionCodes,
-                loginUser.UserCode);
-        }
-
-        return ApiResponse<UserSaveResponse>.Ok(
-            new UserSaveResponse
-            {
-                UserCode = createdUserCode,
-                PartnerCode = null,
-                UserId = userId,
-                UserName = adminUser.UserName,
-                Created = true,
-                Saved = true
-            },
-            "관리자 계정이 생성되었습니다.");
     }
 
     /// <summary>

@@ -1,0 +1,572 @@
+﻿@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.UserManage
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+
+@if (IsOpen)
+{
+    <div class="modal fade show d-block user-request-process-modal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">담당자 요청 처리</h5>
+
+                    <button type="button"
+                            class="btn-close"
+                            @onclick="CloseAsync"
+                            disabled="@_isProcessing">
+                    </button>
+                </div>
+
+                <div class="modal-body">
+                    @if (!string.IsNullOrWhiteSpace(_message))
+                    {
+                        <div class="alert @MessageCss py-2 mb-2">
+                            @_message
+                        </div>
+                    }
+
+                    <div class="mb-2">
+                        <label class="form-label">담당자</label>
+                        <input class="form-control"
+                               value="@TargetDisplayText"
+                               readonly />
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">요청 유형</label>
+                            <input class="form-control"
+                                   value="@RequestTypeName"
+                                   readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">요청 상태</label>
+                            <div>
+                                <span class="@RequestStatusBadgeClass">
+                                    @RequestStatusName
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">요청일</label>
+                            <input class="form-control"
+                                   value="@(RequestedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
+                                   readonly />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">처리 방식</label>
+                            <input class="form-control"
+                                   value="@ProcessActionName"
+                                   readonly />
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label">요청 사유</label>
+                        <textarea class="form-control"
+                              rows="3"
+                              readonly>@RequestReason</textarea>
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label">처리 메모</label>
+                        <textarea class="form-control"
+                                  rows="2"
+                                  @bind="_memo"
+                                  placeholder="처리 결과 또는 반려 사유를 입력하세요."></textarea>
+                    </div>
+
+                    @if (_requestInfo?.ProcessAction == UserRequestProcessAction.EditUserInfo)
+                    {
+                        <div class="alert alert-info py-2 mt-3 mb-0">
+                            정보수정 요청은 담당자 정보를 수정한 뒤 저장하면 요청이 처리 완료됩니다.
+                        </div>
+                    }
+                    else if (_requestInfo?.ProcessAction == UserRequestProcessAction.ResetPassword)
+                    {
+                        <div class="alert alert-info py-2 mt-3 mb-0">
+                            비밀번호초기화 요청은 비밀번호 초기화 모달을 먼저 실행한 뒤 요청이 처리 완료됩니다.
+                        </div>
+                    }
+                    else if (_requestInfo?.ProcessAction == UserRequestProcessAction.ChangeUserStatus)
+                    {
+                        <div class="alert alert-info py-2 mt-3 mb-0">
+                            상태 변경 요청은 요청 유형에 맞는 상태로 변경한 뒤 요청이 처리 완료됩니다.
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer py-2">
+                    <button class="btn btn-outline-secondary"
+                            @onclick="CloseAsync"
+                            disabled="@_isProcessing">
+                        닫기
+                    </button>
+
+                    <button class="btn btn-outline-danger"
+                            @onclick="RejectAsync"
+                            disabled="@_isProcessing">
+                        반려
+                    </button>
+
+                    <button class="btn btn-primary"
+                            @onclick="ProcessAsync"
+                            disabled="@_isProcessing">
+                        @ProcessButtonText
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop fade show"></div>
+}
+
+<style>
+    .user-request-process-modal {
+        z-index: 1060;
+    }
+
+        .user-request-process-modal + .modal-backdrop {
+            z-index: 1050;
+        }
+
+        .user-request-process-modal .modal-dialog {
+            max-width: 640px;
+        }
+
+        .user-request-process-modal .modal-body {
+            padding: 12px 16px;
+        }
+
+        .user-request-process-modal .form-label {
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+</style>
+
+@code {
+    /// <summary>
+    /// 모달 표시 여부.
+    /// 부모 컴포넌트에서 true/false로 제어한다.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// 요청 대상 담당자 코드.
+    /// </summary>
+    [Parameter]
+    public int UserCode { get; set; }
+
+    /// <summary>
+    /// 요청 대상 담당자명.
+    /// 화면 표시용으로만 사용한다.
+    /// </summary>
+    [Parameter]
+    public string? UserName { get; set; }
+
+    /// <summary>
+    /// 요청 유형 코드.
+    /// UserRequestMetadata에서 요청 유형명과 처리 방식을 찾는 기준값이다.
+    /// </summary>
+    [Parameter]
+    public int? RequestType { get; set; }
+
+    /// <summary>
+    /// 요청 상태 코드.
+    /// 1=요청대기 상태일 때만 처리 가능하다.
+    /// </summary>
+    [Parameter]
+    public int RequestStatus { get; set; }
+
+    /// <summary>
+    /// 담당자가 입력한 요청 사유.
+    /// </summary>
+    [Parameter]
+    public string? RequestReason { get; set; }
+
+    /// <summary>
+    /// 요청일.
+    /// </summary>
+    [Parameter]
+    public DateTime? RequestedAt { get; set; }
+
+    /// <summary>
+    /// 모달 닫기 이벤트.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// 요청 처리 또는 반려 완료 이벤트.
+    /// 부모 화면에서 상세/로그를 다시 조회할 때 사용한다.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnCompleted { get; set; }
+
+    /// <summary>
+    /// 정보수정 요청 처리 이벤트.
+    ///
+    /// 처리 메모를 부모 화면으로 전달한다.
+    /// 부모 화면은 수정 저장 후 이 메모로 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string?> OnEditUserInfoRequested { get; set; }
+
+    /// <summary>
+    /// 비밀번호 초기화 요청 처리 이벤트.
+    ///
+    /// 처리 메모를 부모 화면으로 전달한다.
+    /// 부모 화면은 비밀번호 초기화 완료 후 이 메모로 요청 처리 완료 API를 호출한다.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string?> OnPasswordResetRequested { get; set; }
+
+    private string? _memo;
+    private string? _message;
+    private bool _isSuccessMessage;
+    private bool _isProcessing;
+
+    private UserRequestTypeInfo? _requestInfo =>
+        UserRequestMetadata.FindRequestType(RequestType);
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private string TargetDisplayText =>
+        string.IsNullOrWhiteSpace(UserName)
+            ? UserCode.ToString()
+            : $"{UserName} ({UserCode})";
+
+    private string RequestTypeName =>
+        UserRequestMetadata.GetRequestTypeName(RequestType);
+
+    private string RequestStatusName =>
+        UserRequestMetadata.GetRequestStatusName(RequestStatus);
+
+    private string RequestStatusBadgeClass =>
+        UserRequestMetadata.GetRequestStatusBadgeClass(RequestStatus);
+
+    private string ProcessButtonText
+    {
+        get
+        {
+            return _requestInfo?.ProcessAction switch
+            {
+                UserRequestProcessAction.EditUserInfo => "수정 진행",
+                UserRequestProcessAction.ResetPassword => "비밀번호 초기화 진행",
+                UserRequestProcessAction.ChangeUserStatus => "요청 처리",
+                _ => "요청 처리"
+            };
+        }
+    }
+
+    private string ProcessActionName
+    {
+        get
+        {
+            return _requestInfo?.ProcessAction switch
+            {
+                UserRequestProcessAction.EditUserInfo => "정보 수정",
+                UserRequestProcessAction.ResetPassword => "비밀번호 초기화",
+                UserRequestProcessAction.ChangeUserStatus => "상태 변경",
+                _ => "-"
+            };
+        }
+    }
+
+    /// <summary>
+    /// 요청을 처리한다.
+    ///
+    /// 요청 유형별 처리 방식은 UserRequestMetadata에서 결정한다.
+    /// 정보수정과 비밀번호초기화는 부모 화면의 기능을 재사용하고,
+    /// 상태 변경 요청은 이 모달에서 상태 변경 후 요청 완료 처리를 수행한다.
+    /// </summary>
+    private async Task ProcessAsync()
+    {
+        _message = null;
+
+        if (!CanProcess())
+        {
+            return;
+        }
+
+        if (_requestInfo == null)
+        {
+            SetWarning("요청 유형 정보를 찾을 수 없습니다.");
+            return;
+        }
+
+        switch (_requestInfo.ProcessAction)
+        {
+            case UserRequestProcessAction.EditUserInfo:
+                await RequestEditUserInfoAsync();
+                break;
+
+            case UserRequestProcessAction.ResetPassword:
+                await RequestPasswordResetAsync();
+                break;
+
+            case UserRequestProcessAction.ChangeUserStatus:
+                await ProcessStatusChangeRequestAsync(_requestInfo);
+                break;
+
+            default:
+                SetWarning("처리할 수 없는 요청 유형입니다.");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 정보수정 요청 처리를 부모 화면에 위임한다.
+    ///
+    /// 요청처리 모달에서 입력한 처리 메모를 부모에게 전달한다.
+    /// 부모 화면은 수정 모드로 전환하고, 저장 완료 후 요청을 처리완료 상태로 변경한다.
+    /// </summary>
+    private async Task RequestEditUserInfoAsync()
+    {
+        if (_requestInfo == null)
+        {
+            SetWarning("요청 유형 정보를 찾을 수 없습니다.");
+            return;
+        }
+
+        var processMemo = GetProcessMemo(_requestInfo);
+
+        ClearState();
+
+        await OnEditUserInfoRequested.InvokeAsync(processMemo);
+    }
+
+    /// <summary>
+    /// 비밀번호 초기화 요청 처리를 부모 화면에 위임한다.
+    ///
+    /// 요청처리 모달에서 입력한 처리 메모를 부모에게 전달한다.
+    /// 부모 화면은 PasswordResetModal을 열고, 초기화 완료 후 요청을 처리완료 상태로 변경한다.
+    /// </summary>
+    private async Task RequestPasswordResetAsync()
+    {
+        if (_requestInfo == null)
+        {
+            SetWarning("요청 유형 정보를 찾을 수 없습니다.");
+            return;
+        }
+
+        var processMemo = GetProcessMemo(_requestInfo);
+
+        ClearState();
+
+        await OnPasswordResetRequested.InvokeAsync(processMemo);
+    }
+
+    /// <summary>
+    /// 상태 변경 요청을 처리한다.
+    ///
+    /// 상태 변경 API는 담당자 상태 변경과 함께
+    /// users.user_request_status를 처리완료로 변경한다.
+    /// 따라서 이 메서드에서는 /requests/process API를 추가 호출하지 않는다.
+    /// </summary>
+    private async Task ProcessStatusChangeRequestAsync(UserRequestTypeInfo requestInfo)
+    {
+        if (requestInfo.TargetUserStatus == null)
+        {
+            SetWarning("상태 변경 대상 값이 정의되어 있지 않습니다.");
+            return;
+        }
+
+        _isProcessing = true;
+
+        try
+        {
+            var statusRequest = new UserStatusChangeRequest
+            {
+                NewStatus = requestInfo.TargetUserStatus.Value,
+                Memo = GetProcessMemo(requestInfo)
+            };
+
+            var statusResult = await ApiClient.PostAsync<UserStatusChangeRequest, ApiResponse<bool>>(
+                $"/api/manage/users/{UserCode}/status",
+                statusRequest);
+
+            if (statusResult == null)
+            {
+                SetWarning("상태 변경 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!statusResult.Success)
+            {
+                SetWarning(statusResult.Message);
+                return;
+            }
+
+            ClearState();
+
+            await OnCompleted.InvokeAsync();
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    /// <summary>
+    /// 요청을 반려한다.
+    ///
+    /// 반려는 사유가 반드시 필요하므로 처리 메모가 비어 있으면 진행하지 않는다.
+    /// </summary>
+    private async Task RejectAsync()
+    {
+        _message = null;
+
+        if (!CanProcess())
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_memo))
+        {
+            SetWarning("반려 사유를 입력하세요.");
+            return;
+        }
+
+        _isProcessing = true;
+
+        try
+        {
+            var request = new UserRequestProcessRequest
+            {
+                Memo = _memo
+            };
+
+            var result = await ApiClient.PostAsync<UserRequestProcessRequest, ApiResponse<bool>>(
+                $"/api/manage/users/{UserCode}/reject",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("요청 반려 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            ClearState();
+            await OnCompleted.InvokeAsync();
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    /// <summary>
+    /// 요청 상태를 처리 완료로 변경한다.
+    ///
+    /// 실제 작업이 완료된 뒤 호출되어야 한다.
+    /// 예: 상태 변경 완료 후, 비밀번호 초기화 완료 후, 정보 수정 저장 완료 후.
+    /// </summary>
+    // private async Task<bool> CompleteRequestAsync(UserRequestTypeInfo requestInfo)
+    // {
+    //     var request = new UserRequestProcessRequest
+    //     {
+    //         Memo = GetProcessMemo(requestInfo)
+    //     };
+
+    //     var result = await ApiClient.PostAsync<UserRequestProcessRequest, ApiResponse<bool>>(
+    //         $"/api/manage/users/{UserCode}/requests/process",
+    //         request);
+
+    //     if (result == null)
+    //     {
+    //         SetWarning("요청 처리 응답을 받을 수 없습니다.");
+    //         return false;
+    //     }
+
+    //     if (!result.Success)
+    //     {
+    //         SetWarning(result.Message);
+    //         return false;
+    //     }
+
+    //     return true;
+    // }
+
+    /// <summary>
+    /// 요청 처리 가능 여부를 검증한다.
+    /// </summary>
+    private bool CanProcess()
+    {
+        if (UserCode <= 0)
+        {
+            SetWarning("담당자 코드가 올바르지 않습니다.");
+            return false;
+        }
+
+        if (!UserRequestMetadata.IsPendingRequest(RequestType, RequestStatus))
+        {
+            SetWarning("처리 대기 중인 요청이 아닙니다.");
+            return false;
+        }
+
+        if (_requestInfo == null)
+        {
+            SetWarning("처리할 요청 유형이 없습니다.");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 요청 처리 메모를 반환한다.
+    ///
+    /// 관리자가 메모를 직접 입력했으면 그 값을 사용하고,
+    /// 입력하지 않았으면 요청 유형별 기본 처리 메모를 사용한다.
+    /// </summary>
+    private string GetProcessMemo(UserRequestTypeInfo requestInfo)
+    {
+        return string.IsNullOrWhiteSpace(_memo)
+            ? requestInfo.DefaultProcessMemo
+            : _memo;
+    }
+
+    /// <summary>
+    /// 모달을 닫는다.
+    /// 입력 상태도 함께 초기화한다.
+    /// </summary>
+    private async Task CloseAsync()
+    {
+        ClearState();
+        await OnClose.InvokeAsync();
+    }
+
+    /// <summary>
+    /// 모달 내부 입력값과 메시지를 초기화한다.
+    /// </summary>
+    private void ClearState()
+    {
+        _memo = null;
+        _message = null;
+        _isSuccessMessage = false;
+    }
+
+    /// <summary>
+    /// 경고 메시지를 설정한다.
+    /// </summary>
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

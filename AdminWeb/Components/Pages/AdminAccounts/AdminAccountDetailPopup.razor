@@ -1,0 +1,554 @@
+﻿@page "/admin/accounts/popup/{UserCode:int}"
+@page "/admin/accounts/new"
+@layout poscam.AdminWeb.Components.Layout.PopupLayout
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Admin
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.UserManage
+@using poscam.AdminWeb.Components.Pages.Common
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+
+<div class="adminaccount-popup">
+    <div class="popup-header">
+        <div>
+            <h5 class="mb-0">@PageTitle</h5>
+            <small class="text-muted">
+                관리자 코드 : @UserCode
+            </small>
+        </div>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @MessageCss">
+            @_message
+        </div>
+    }
+
+    @if (_isLoading)
+    {
+        <p>관리자 계정 정보를 불러오는 중입니다.</p>
+    }
+    else
+    {
+        <div class="container-fluid">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            기본 정보
+                        </div>
+
+                        <div class="card-body">
+                            @if (_isCreateMode)
+                            {
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">로그인 ID</label>
+                                        <input class="form-control" @bind="_createRequest.UserId" />
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">초기 비밀번호</label>
+                                        <input type="password" class="form-control" @bind="_createRequest.Password" />
+                                    </div>
+
+                                    <div class="col-md-8">
+                                        <label class="form-label">관리자명</label>
+                                        <input class="form-control" @bind="_createRequest.UserName" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">상태</label>
+                                        <select class="form-select" @bind="_createRequest.UserStatus">
+                                            <option value="1">정상</option>
+                                            <option value="2">일시중지</option>
+                                            <option value="3">무효</option>
+                                            <option value="9">차단</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">연락처</label>
+                                        <input class="form-control" @bind="_createRequest.UserCell" />
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">이메일</label>
+                                        <input class="form-control" @bind="_createRequest.UserEmail" />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mb-3 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="text-muted me-2">관리자 코드</span>
+                                        <span class="badge bg-secondary">@_detail.UserCode</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted me-2">로그인 ID</span>
+                                        <strong>@_detail.UserId</strong>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">관리자명</label>
+                                        <input class="form-control" @bind="_updateRequest.UserName" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">상태</label>
+                                        <select class="form-select" @bind="_updateRequest.UserStatus">
+                                            <option value="1">정상</option>
+                                            <option value="2">일시중지</option>
+                                            <option value="3">무효</option>
+                                            <option value="9">차단</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">연락처</label>
+                                        <input class="form-control" @bind="_updateRequest.UserCell" />
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">이메일</label>
+                                        <input class="form-control" @bind="_updateRequest.UserEmail" />
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">등록일</label>
+                                        <input class="form-control"
+                                               value="@_detail.UserRdate.ToString("yyyy-MM-dd HH:mm")"
+                                               readonly />
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">수정일</label>
+                                        <input class="form-control"
+                                               value="@(_detail.UserUdate?.ToString("yyyy-MM-dd HH:mm") ?? "-")"
+                                               readonly />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="card-footer text-end">
+                            @if (_isCreateMode)
+                            {
+                                <button class="btn btn-primary" @onclick="CreateAdminAccountAsync">
+                                    등록
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline-danger me-2"
+                                        @onclick="OpenPasswordResetModal">
+                                    비밀번호 초기화
+                                </button>
+
+                                <button class="btn btn-primary" @onclick="UpdateAdminAccountAsync">
+                                    저장
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header">
+                            관리자 권한
+                        </div>
+
+                        <div class="card-body">
+                            @foreach (var permission in _permissions)
+                            {
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="@($"permission_{permission.Code}")"
+                                           checked="@_selectedPermissionCodes.Contains(permission.Code)"
+                                           @onchange="e => TogglePermission(permission.Code, e)" />
+
+                                    <label class="form-check-label" for="@($"permission_{permission.Code}")">
+                                        <strong>@permission.Title</strong>
+                                        <span class="text-muted ms-2">(@permission.Code)</span>
+                                        <div class="small text-muted">
+                                            @permission.Description
+                                        </div>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="card-footer text-end">
+                            @if (_isCreateMode)
+                            {
+                                <span class="text-muted small">
+                                    등록 시 선택한 권한이 함께 저장됩니다.
+                                </span>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline-primary"
+                                        @onclick="UpdatePermissionsAsync"
+                                        disabled="@_isSaving">
+                                    @(_isSaving ? "저장 중..." : "권한 저장")
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+        
+</div>
+<style>
+   .popup-header{
+       height: 64px;
+       padding: 12px 18px;
+		border-bottom: 1px solid #dee2e6;
+        background-color: #ffffff;
+		display: flex;
+		align-content: center;
+		justify-content: space-between;
+   }
+   .popup-body {
+       padding:14px 18px;
+       overflow: scroll;
+   }
+</style>
+
+<PasswordResetModal IsOpen="_showPasswordResetModal"
+                    TargetType="admin"
+                    UserCode="@UserCode"
+                    TargetName="@_detail.UserName"
+                    OnClose="ClosePasswordResetModal"
+                    OnCompleted="OnPasswordResetCompleted" />
+
+@code {
+    [Parameter]
+    public int UserCode { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isCreateMode;
+    private bool _isSuccessMessage;
+    /// <summary>
+    /// 저장 처리 중인지 여부.
+    ///
+    /// 버튼 중복 클릭 방지 및 저장 중 상태 표시용으로 사용한다.
+    /// </summary>
+    private bool _isSaving;
+    private string? _message;
+    private bool _showPasswordResetModal;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+    private string PageTitle => _isCreateMode ? "관리자 계정 등록" : "관리자 계정 상세";
+
+    private UserManageDetailDto _detail = new();
+
+    private AdminAccountCreateRequest _createRequest = new();
+    private AdminAccountUpdateRequest _updateRequest = new();
+
+    private string _newPassword = "";
+    private string? _passwordMemo;
+
+    private List<int> _selectedPermissionCodes = new();
+
+
+
+    private readonly List<PermissionViewItem> _permissions = new()
+    {
+        new PermissionViewItem(1, "관리자 계정 관리", "관리자 계정 생성, 수정, 상태 변경"),
+        new PermissionViewItem(2, "관리자 비밀번호 초기화", "관리자 계정 비밀번호 초기화"),
+        new PermissionViewItem(3, "관리자 권한 관리", "관리자 세부 권한 부여 및 수정"),
+        new PermissionViewItem(4, "파트너사 관리", "파트너사 등록 및 수정"),
+        new PermissionViewItem(5, "담당자 관리", "담당자 등록, 수정, 승인, 상태 변경"),
+        new PermissionViewItem(6, "파트너 단가 정책 관리", "파트너사 가격 정책 등록 및 수정"),
+        new PermissionViewItem(7, "매장 관리", "매장 등록 및 수정"),
+        new PermissionViewItem(8, "정산 관리", "정산 처리 및 수정"),
+        new PermissionViewItem(9, "담당자 비밀번호 초기화", "담당자 계정 비밀번호 초기화"),
+        new PermissionViewItem(10, "계약 관리", "계약 등록 및 수정"),
+        new PermissionViewItem(11, "라이선스 관리", "라이선스 발급, 폐기, 복구")
+    };
+
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     _isCreateMode = UserCode <= 0;
+
+    //     if (_isCreateMode)
+    //     {
+    //         _isLoading = false;
+    //         return;
+    //     }
+
+    //     await LoadDetailAsync();
+    //     await LoadPermissionsAsync();
+
+    //     _isLoading = false;
+    // }
+    protected override void OnInitialized()
+    {
+        // JS Interop을 사용하지 않는 단순 상태값만 여기서 설정한다.
+        _isCreateMode = UserCode <= 0;
+    }
+
+    private void ClosePasswordResetModal()
+    {
+        _showPasswordResetModal = false;
+    }
+
+    private async Task OnPasswordResetCompleted()
+    {
+        SetSuccess("비밀번호가 초기화되었습니다.");
+        await Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _isCreateMode = UserCode <= 0;
+
+        // 신규 등록 화면은 처음에 서버 API를 호출할 필요가 없다.
+        if (_isCreateMode)
+        {
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await LoadDetailAsync();
+        await LoadPermissionsAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+    private async Task LoadDetailAsync()
+    {
+        var result = await ApiClient.GetAsync<ApiResponse<UserManageDetailDto>>(
+            $"/api/admin/accounts/{UserCode}");
+
+        if (result == null)
+        {
+            SetWarning("관리자 계정 상세 응답을 받을 수 없습니다.");
+            return;
+        }
+
+        if (!result.Success || result.Data == null)
+        {
+            SetWarning(result.Message);
+            return;
+        }
+
+        _detail = result.Data;
+
+        _updateRequest = new AdminAccountUpdateRequest
+        {
+            UserCode = _detail.UserCode,
+            UserName = _detail.UserName,
+            UserCell = _detail.UserCell,
+            UserEmail = _detail.UserEmail,
+            UserStatus = _detail.UserStatus
+        };
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        var result = await ApiClient.GetAsync<ApiResponse<List<int>>>(
+            $"/api/admin/accounts/{UserCode}/permissions");
+
+        if (result == null)
+        {
+            SetWarning("관리자 권한 응답을 받을 수 없습니다.");
+            return;
+        }
+
+        if (!result.Success)
+        {
+            SetWarning(result.Message);
+            return;
+        }
+
+        _selectedPermissionCodes = result.Data ?? new List<int>();
+    }
+
+    private async Task CreateAdminAccountAsync()
+    {
+        _message = null;
+
+        _createRequest.PermissionCodes = _selectedPermissionCodes
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+
+        var result = await ApiClient.PostAsync<AdminAccountCreateRequest, ApiResponse<UserSaveResponse>>(
+        "/api/admin/accounts",
+        _createRequest);
+
+        if (result == null)
+        {
+            SetWarning("관리자 계정 등록 응답을 받을 수 없습니다.");
+            return;
+        }
+
+        if (!result.Success)
+        {
+            SetWarning(result.Message);
+            return;
+        }
+
+        SetSuccess(result.Message);
+
+        if (result.Data != null && result.Data.UserCode > 0)
+        {
+            UserCode = result.Data.UserCode;
+            _isCreateMode = false;
+
+            await LoadDetailAsync();
+            await LoadPermissionsAsync();
+        }
+    }
+
+    private async Task UpdateAdminAccountAsync()
+    {
+        _message = null;
+
+        var result = await ApiClient.PutAsync<AdminAccountUpdateRequest, ApiResponse<UserSaveResponse>>(
+            $"/api/admin/accounts/{UserCode}",
+            _updateRequest);
+
+        if (result == null)
+        {
+            SetWarning("관리자 계정 수정 응답을 받을 수 없습니다.");
+            return;
+        }
+
+        if (!result.Success)
+        {
+            SetWarning(result.Message);
+            return;
+        }
+
+        SetSuccess(result.Message);
+        await LoadDetailAsync();
+    }
+
+    private void OpenPasswordResetModal()
+    {
+        if (UserCode <= 0)
+        {
+            SetWarning("비밀번호를 초기화할 관리자 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        _showPasswordResetModal = true;
+    }
+
+
+
+
+    /// <summary>
+    /// 관리자 계정 권한을 저장한다.
+    ///
+    /// 권한 체크박스에서 선택된 권한 코드 목록을 서버로 전달한다.
+    /// 서버 저장 실패 또는 예외 발생 시 Blazor 회로가 끊기지 않도록
+    /// 반드시 try/catch로 예외를 화면 메시지로 변환한다.
+    /// </summary>
+    private async Task UpdatePermissionsAsync()
+    {
+        _message = null;
+
+        if (UserCode <= 0)
+        {
+            SetWarning("권한을 저장할 관리자 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            var request = new AdminAccountPermissionUpdateRequest
+            {
+                PermissionCodes = _selectedPermissionCodes
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList()
+            };
+
+            var result = await ApiClient.PutAsync<AdminAccountPermissionUpdateRequest, ApiResponse<bool>>(
+                $"/api/admin/accounts/{UserCode}/permissions",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("권한 저장 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("관리자 권한이 저장되었습니다.");
+
+            await LoadPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"권한 저장 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+     
+    private void TogglePermission(int permissionCode, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool b && b;
+
+        if (isChecked)
+        {
+            if (!_selectedPermissionCodes.Contains(permissionCode))
+            {
+                _selectedPermissionCodes.Add(permissionCode);
+            }
+        }
+        else
+        {
+            _selectedPermissionCodes.Remove(permissionCode);
+        }
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+
+    private sealed record PermissionViewItem(
+        int Code,
+        string Title,
+        string Description);
+}

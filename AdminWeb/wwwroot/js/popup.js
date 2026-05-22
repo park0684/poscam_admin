@@ -28,10 +28,41 @@
         this.openFixedPopup(
             `/users/popup/${userCode}`,
             `users_detail_${userCode}`,
-            860,
+            900,
             720
         );
     },
+
+    /** 관리자 계정 상세 팝업 */
+    openAdminAccountDetail: function (userCode) {
+        this.openFixedPopup(
+            `/admin/accounts/popup/${userCode}`,
+            `admin_account_detail_${userCode}`,
+            900,
+            800
+        );
+    },
+
+    /** 관리자 계정 신규 등록 팝업 */
+    openAdminAccountCreate: function () {
+        this.openFixedPopup(
+            `/admin/accounts/new`,
+            `admin_account_create`,
+            900,
+            800
+        );
+    },
+
+    /** 비밀번호 초기화 공통 팝업 */
+    openPasswordReset: function (targetType, userCode) {
+        this.openFixedPopup(
+            `/password-reset/popup/${targetType}/${userCode}`,
+            `password_reset_${targetType}_${userCode}`,
+            520,
+            550
+        );
+    },
+
     /**
      * 공통 팝업 열기
      *

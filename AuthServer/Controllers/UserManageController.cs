@@ -162,8 +162,8 @@ public class UserManageController : ControllerBase
     [HttpPut("{userCode:int}")]
     [ProducesResponseType(typeof(ApiResponse<UserSaveResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<UserSaveResponse>>> UpdateUser(
-    int userCode,
-    [FromBody] UserUpdateRequest request)
+        int userCode,
+        [FromBody] UserUpdateRequest request)
     {
         var loginUserResult = await GetLoginUserAsync();
 
@@ -411,6 +411,40 @@ public class UserManageController : ControllerBase
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// 최근 담당자 요청 처리 완료 API.
+    /// 
+    /// 실제 정보수정 또는 비밀번호초기화 작업이 끝난 뒤
+    /// 최신 요청 상태를 처리완료로 변경하기 위해 호출한다.
+    /// 
+    /// 상태 변경 요청은 /status API에서 이미 완료 처리되므로
+    /// 이 API를 호출하지 않는다.
+    /// </summary>
+    [HttpPost("{userCode:int}/requests/process")]
+    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<bool>>> ProcessLatestRequest(
+        int userCode,
+        [FromBody] UserRequestProcessRequest request)
+    {
+        var loginUserResult = await GetLoginUserAsync();
+
+        if (!loginUserResult.Success || loginUserResult.Data == null)
+        {
+            return Ok(ApiResponse<bool>.Fail(
+                loginUserResult.ErrorCode,
+                loginUserResult.Message));
+        }
+
+        var result = await _userManageService.ProcessLatestRequestAsync(
+            userCode,
+            request,
+            loginUserResult.Data);
+
+        return Ok(result);
+    }
+
+
     /*
      * 중요:
      * 

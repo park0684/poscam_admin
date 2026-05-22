@@ -201,7 +201,8 @@
 
         var role = await AuthStateService.GetUserRoleAsync();
 
-        _isAdmin = role == 1;
+        // System = 0, Admin = 1
+        _isAdmin = role == 0 || role == 1;
         _isPartnerUser = role == 2;
         _loginPartnerCode = await AuthStateService.GetPartnerCodeAsync();
 

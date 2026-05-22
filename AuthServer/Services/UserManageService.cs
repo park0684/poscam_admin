@@ -637,6 +637,103 @@ public class UserManageService
     }
 
     /// <summary>
+    /// 담당자 최근 요청을 처리완료 상태로 변경한다.
+    /// 
+    /// 이 메서드는 실제 처리 API가 이미 실행된 뒤 호출된다.
+    /// 정보수정/비밀번호초기화 요청에만 사용한다.
+    /// 
+    /// 처리 대상:
+    /// - 정보수정 요청: UpdateUserAsync 성공 후 호출
+    /// - 비밀번호초기화 요청: ResetPasswordAsync 성공 후 호출
+    /// 
+    /// 제외 대상:
+    /// - 가입승인 요청은 ApproveUserAsync에서 완료 처리한다.
+    /// - 상태 변경 요청은 ChangeUserStatusAsync에서 이미 요청 상태를 Completed로 변경한다.
+    /// </summary>
+    public async Task<ApiResponse<bool>> ProcessLatestRequestAsync(
+        int userCode,
+        UserRequestProcessRequest request,
+        UserAccount loginUser)
+    {
+        if (loginUser == null)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "로그인 정보가 없습니다.");
+        }
+
+        if (userCode <= 0)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 코드가 올바르지 않습니다.");
+        }
+
+        var targetUser = await _userAccountRepository.GetManageUserDetailAsync(userCode);
+
+        if (targetUser == null)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 정보를 찾을 수 없습니다.");
+        }
+
+        if (targetUser.UserRequestStatus != (int)UserRequestStatus.Pending)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "요청대기 상태의 요청만 처리할 수 있습니다.");
+        }
+
+        var requestType = targetUser.UserRequestType ?? 0;
+
+        if (requestType != (int)UserRequestType.InfoChange &&
+            requestType != (int)UserRequestType.PasswordReset)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "해당 요청은 전용 처리 API에서 이미 완료 처리됩니다.");
+        }
+
+        // 요청 유형별로 필요한 권한을 확인한다.
+        // 정보수정 요청은 담당자 관리 권한이 필요하고,
+        // 비밀번호초기화 요청은 담당자 비밀번호 초기화 권한이 필요하다.
+        var permissionResult = requestType switch
+        {
+            (int)UserRequestType.PasswordReset =>
+                await CheckPartnerUserPasswordResetPermissionAsync(loginUser),
+
+            _ =>
+                await CheckPartnerUserManagePermissionAsync(loginUser)
+        };
+
+        if (!permissionResult.Success)
+        {
+            return ApiResponse<bool>.Fail(
+                permissionResult.ErrorCode,
+                permissionResult.Message);
+        }
+
+        var memo = string.IsNullOrWhiteSpace(request.Memo)
+            ? "담당자 요청 처리 완료"
+            : request.Memo;
+
+        var affected = await _userAccountRepository.CompleteLatestRequestAsync(
+            userCode,
+            requestType,
+            memo);
+
+        if (affected <= 0)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "요청 처리가 완료되지 않았습니다.");
+        }
+
+        return ApiResponse<bool>.Ok(true, "요청이 처리되었습니다.");
+    }
+
+    /// <summary>
     /// 관리자에 의한 사용자 상태 변경.
     /// 상태 변경은 관리자만 가능하다.
     /// </summary>
