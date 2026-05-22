@@ -1,0 +1,102 @@
+﻿@using poscam.AdminWeb.Models.Navigation
+
+@if (Item.HasChildren)
+{
+    <div class="nav-item px-3 menu-group level-@Level">
+        <button type="button"
+                class="nav-link menu-toggle @(IsExpanded() ? "active" : "")"
+                @onclick="ToggleMenu">
+            <span>@Item.Title</span>
+            <span class="menu-caret">@(IsExpanded() ? "▾" : "▸")</span>
+        </button>
+
+        @if (IsExpanded())
+        {
+            <div class="menu-children">
+                @foreach (var child in Item.Children.OrderBy(x => x.Order))
+                {
+                    <MenuNode Item="child"
+                              Level="@(Level + 1)"
+                              OpenTopKey="OpenTopKey"
+                              OnToggleTop="OnToggleTop" />
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="nav-item px-3 menu-item level-@Level">
+        <NavLink class="nav-link menu-link"
+                 href="@Item.Url"
+                 Match="NavLinkMatch.Prefix">
+            @Item.Title
+        </NavLink>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public MenuItem Item { get; set; } = new();
+
+    [Parameter]
+    public int Level { get; set; }
+
+    [Parameter]
+    public string? OpenTopKey { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnToggleTop { get; set; }
+
+    private bool IsExpanded()
+    {
+        return Level == 0 && OpenTopKey == Item.Key;
+    }
+
+    private async Task ToggleMenu()
+    {
+        if (Level == 0)
+        {
+            await OnToggleTop.InvokeAsync(Item.Key);
+        }
+    }
+}
+.menu-group,
+.menu-item {
+    width: 100%;
+}
+
+.menu-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    color: white;
+}
+
+.menu-toggle:hover,
+.menu-toggle:focus {
+    color: white;
+    text-decoration: none;
+    box-shadow: none;
+}
+
+.menu-caret {
+    font-size: 0.85rem;
+}
+
+.menu-children {
+    margin-top: 0.15rem;
+}
+
+::deep .menu-link {
+    color: white;
+}
+
+.level-1 ::deep .menu-link {
+    padding-left: 1.5rem;
+    font-size: 0.95rem;
+}

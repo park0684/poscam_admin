@@ -1,0 +1,137 @@
+﻿@page "/login"
+@layout LoginLayout
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Components.Web
+@using poscam.AdminWeb.Components.Layout
+@using poscam.AdminWeb.Models.Account
+@using poscam.AdminWeb.Models.Common
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>POSCAM 관리자 로그인</PageTitle>
+
+<div class="container mt-5" style="max-width: 420px;">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h3 class="mb-3 text-center">POSCAM 관리자</h3>
+            <p class="text-muted text-center mb-4">관리자 또는 담당자 계정으로 로그인하세요.</p>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <div class="alert alert-warning">
+                    @_message
+                </div>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">아이디</label>
+                <input class="form-control"
+                       @bind="_request.UserId"
+                       @onkeydown="OnUserIdKeyDown"
+                       placeholder="아이디를 입력하세요" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">비밀번호</label>
+                <input class="form-control"
+                       type="password"
+                       @bind="_request.Password"
+					   @bind:event="oninput"
+                       @ref="_passwordInput"
+                       @onkeydown="OnPasswordKeyDown"
+                       placeholder="비밀번호를 입력하세요" />
+            </div>
+
+            <button class="btn btn-primary w-100"
+                    @onclick="LoginAsync"
+                    disabled="@_isLoading">
+                @(_isLoading ? "로그인 중..." : "로그인")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly UserLoginRequest _request = new();
+
+    private bool _isLoading;
+
+    private string? _message;
+
+    private ElementReference _passwordInput;
+
+    private async Task OnUserIdKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await _passwordInput.FocusAsync();
+        }
+    }
+
+    private async Task OnPasswordKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            if (_isLoading)
+				return;
+            await LoginAsync();
+        }
+    }
+    private async Task LoginAsync()
+    {
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_request.UserId))
+        {
+            _message = "아이디를 입력하세요.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.Password))
+        {
+            _message = "비밀번호를 입력하세요.";
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var result = await ApiClient.PostAsync<UserLoginRequest, ApiResponse<UserLoginResponse>>(
+                "/api/accounts/login",
+                _request,
+                withAuth: false);
+
+            if (result == null)
+            {
+                _message = "서버 응답을 받을 수 없습니다.";
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                _message = result.Message;
+                return;
+            }
+
+            await AuthStateService.SaveLoginAsync(
+                result.Data.Token,
+                result.Data.UserCode,
+                result.Data.PartnerCode,
+                result.Data.UserName,
+                result.Data.UserRole);
+
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _message = $"로그인 중 오류가 발생했습니다. {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

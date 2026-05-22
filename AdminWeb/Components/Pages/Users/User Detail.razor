@@ -1,0 +1,952 @@
+﻿@page "/users/new"
+@page "/users/{UserCode:int}"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Partner
+@using poscam.AdminWeb.Models.UserManage
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>담당자 상세</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">@PageTitleText</h3>
+            <small class="text-muted">
+                파트너사 담당자 계정의 등록, 승인, 상태, 요청 정보를 관리합니다.
+            </small>
+        </div>
+
+        <button class="btn btn-outline-secondary" @onclick="GoList">
+            목록
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @MessageCss">
+            @_message
+        </div>
+    }
+
+    @if (_isLoading)
+    {
+        <div class="alert alert-info">
+            담당자 정보를 불러오는 중입니다.
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-lg-7">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <strong>담당자 기본정보</strong>
+
+                        @if (!IsNew)
+                        {
+                            <span class="@GetUserStatusBadge(_detail.UserStatus)">
+                                @GetUserStatusName(_detail.UserStatus)
+                            </span>
+                        }
+                    </div>
+
+                    <div class="card-body">
+                        @if (!IsNew)
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">아이디</label>
+                                    <input class="form-control" value="@_detail.UserId" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">승인일</label>
+                                    <input class="form-control" value="@(_detail.ApprovedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">등록일</label>
+                                    <input class="form-control" value="@_detail.UserRdate.ToString("yyyy-MM-dd HH:mm")" readonly />
+                                </div>
+                            </div>
+                        }
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">파트너사 <span class="text-danger">*</span></label>
+
+                                @if (_isAdmin)
+                                {
+                                    <select class="form-select" @bind="_form.PartnerCode" disabled="@(!_editMode && !IsNew)">
+                                        <option value="">파트너사를 선택하세요</option>
+                                        @foreach (var partner in _partners)
+                                        {
+                                            <option value="@partner.PartnerCode">
+                                                @partner.PartnerName
+                                            </option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <input class="form-control" value="@GetLoginPartnerName()" readonly />
+                                }
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">담당자명 <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_form.UserName" readonly="@(!CanEditForm)" />
+                            </div>
+                        </div>
+
+                        @if (IsNew)
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">아이디 <span class="text-danger">*</span></label>
+                                    <input class="form-control" @bind="_createRequest.UserId" />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">초기 비밀번호 <span class="text-danger">*</span></label>
+                                    <input class="form-control" type="password" @bind="_createRequest.Password" />
+                                </div>
+                            </div>
+                        }
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">연락처</label>
+                                <input class="form-control" @bind="_form.UserCell" readonly="@(!CanEditForm)" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">이메일</label>
+                                <input class="form-control" @bind="_form.UserEmail" readonly="@(!CanEditForm)" />
+                            </div>
+                        </div>
+
+                        @if (!IsNew)
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">최근 요청 유형</label>
+                                    <input class="form-control" value="@GetRequestTypeName(_detail.UserRequestType)" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">최근 요청 상태</label>
+                                    <input class="form-control" value="@GetRequestStatusName(_detail.UserRequestStatus)" readonly />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">요청일</label>
+                                    <input class="form-control" value="@(_detail.UserRequestedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")" readonly />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">최근 요청 사유</label>
+                                <textarea class="form-control" rows="2" readonly>@_detail.UserRequestReason</textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">처리 결과 메모</label>
+                                <textarea class="form-control" rows="2" readonly>@_detail.UserRequestResultMemo</textarea>
+                            </div>
+                        }
+
+                        @if (IsNew)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">등록 요청 사유</label>
+                                <textarea class="form-control" rows="3" @bind="_createRequest.RequestReason"></textarea>
+                            </div>
+                        }
+
+                        <div class="d-flex justify-content-end gap-2">
+                            @if (IsNew)
+                            {
+                                <button class="btn btn-primary" @onclick="CreateUserAsync" disabled="@_isSaving">
+                                    @(_isSaving ? "등록 중..." : "담당자 등록")
+                                </button>
+                            }
+                            else if (_isAdmin)
+                            {
+                                @if (!_editMode)
+                                {
+                                    <button class="btn btn-outline-primary" @onclick="EnableEdit">
+                                        수정
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-outline-secondary" @onclick="CancelEdit" disabled="@_isSaving">
+                                        취소
+                                    </button>
+                                    <button class="btn btn-primary" @onclick="UpdateUserAsync" disabled="@_isSaving">
+                                        @(_isSaving ? "저장 중..." : "저장")
+                                    </button>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @if (!IsNew)
+                {
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <strong>변경 로그</strong>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="LoadLogsAsync">
+                                새로고침
+                            </button>
+                        </div>
+
+                        <div class="card-body">
+                            @if (_logs.Count == 0)
+                            {
+                                <div class="alert alert-secondary mb-0">
+                                    등록된 로그가 없습니다.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="table-responsive"
+                                     style="max-height: 260px; overflow-y: auto;">
+                                    <table class="table table-sm table-striped align-middle mb-0">
+                                        <thead class="table-light sticky-top">
+                                            <tr>
+                                                <th>일시</th>
+                                                <th>로그</th>
+                                                <th>요청</th>
+                                                <th>상태</th>
+                                                <th>사유/메모</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var log in _logs)
+                                            {
+                                                <tr>
+                                                    <td>@log.UlogRdate.ToString("yyyy-MM-dd HH:mm")</td>
+                                                    <td>@GetLogTypeName(log.UlogType)</td>
+                                                    <td>@GetRequestTypeName(log.UlogRequestType)</td>
+                                                    <td>@GetRequestStatusName(log.UlogRequestStatus ?? 0)</td>
+                                                    <td>
+                                                        <div>@(log.UlogReason ?? "-")</div>
+                                                        <small class="text-muted">@(log.UlogMemo ?? "")</small>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="col-lg-5">
+                @if (!IsNew)
+                {
+                    <div class="card shadow-sm mb-3">
+                        <div class="card-header">
+                            <strong>관리 기능</strong>
+                        </div>
+
+                        <div class="card-body">
+                            @if (_isAdmin)
+                            {
+                                <div class="d-grid gap-2">
+                                    @if (_detail.UserStatus == 0)
+                                    {
+                                        <button class="btn btn-success" @onclick="ApproveUserAsync" disabled="@_isSaving">
+                                            가입 승인
+                                        </button>
+                                    }
+
+                                    @if (_detail.UserRequestStatus == 1)
+                                    {
+                                        <button class="btn btn-outline-danger" @onclick="RejectRequestAsync" disabled="@_isSaving">
+                                            최근 요청 반려
+                                        </button>
+                                    }
+
+                                    <button class="btn btn-outline-secondary" @onclick="() => ChangeStatusAsync(1)" disabled="@_isSaving">
+                                        정상 처리
+                                    </button>
+
+                                    <button class="btn btn-outline-warning" @onclick="() => ChangeStatusAsync(2)" disabled="@_isSaving">
+                                        일시중지 처리
+                                    </button>
+
+                                    <button class="btn btn-outline-dark" @onclick="() => ChangeStatusAsync(3)" disabled="@_isSaving">
+                                        무효 처리
+                                    </button>
+
+                                    <button class="btn btn-outline-danger" @onclick="() => ChangeStatusAsync(9)" disabled="@_isSaving">
+                                        차단 처리
+                                    </button>
+                                </div>
+
+                                <hr />
+
+                                <label class="form-label">처리 메모</label>
+                                <textarea class="form-control mb-3" rows="3" @bind="_processMemo"></textarea>
+
+                                <label class="form-label">새 비밀번호</label>
+                                <input class="form-control mb-2" type="password" @bind="_newPassword" />
+
+                                <button class="btn btn-outline-primary w-100" @onclick="ResetPasswordAsync" disabled="@_isSaving">
+                                    비밀번호 초기화
+                                </button>
+                            }
+                            else
+                            {
+                                <label class="form-label">요청 유형</label>
+                                <select class="form-select mb-3" @bind="_requestType">
+                                    <option value="2">정보수정</option>
+                                    <option value="3">비밀번호초기화</option>
+                                    <option value="4">일시중지</option>
+                                    <option value="5">정상복구</option>
+                                    <option value="6">무효</option>
+                                    <option value="9">차단</option>
+                                </select>
+
+                                <label class="form-label">요청 사유</label>
+                                <textarea class="form-control mb-3" rows="4" @bind="_requestReason"></textarea>
+
+                                <button class="btn btn-primary w-100" @onclick="CreateRequestAsync" disabled="@_isSaving">
+                                    변경 요청 등록
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5>등록 안내</h5>
+                            <p class="text-muted mb-0">
+                                신규 담당자는 승인대기 상태로 등록됩니다.
+                                관리자가 승인하면 로그인과 담당 업무 수행이 가능합니다.
+                            </p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int UserCode { get; set; }
+
+    private bool IsNew => UserCode <= 0;
+
+    private string PageTitleText => IsNew ? "신규 담당자 등록" : "담당자 상세";
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _isAdmin;
+    private bool _isPartnerUser;
+    private bool _editMode;
+    private bool _isSuccessMessage;
+
+    private int? _loginPartnerCode;
+    private int _requestType = 6;
+
+    private string? _message;
+    private string? _processMemo;
+    private string? _requestReason;
+    private string? _newPassword;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+    private bool CanEditForm => IsNew || (_isAdmin && _editMode);
+
+    private UserManageDetailDto _detail = new();
+    private UserUpdateRequest _form = new();
+    private UserCreateRequest _createRequest = new();
+    private List<PartnerListItemDto> _partners = new();
+    private List<UserLogItemDto> _logs = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var role = await AuthStateService.GetUserRoleAsync();
+        _isAdmin = role == 1;
+        _isPartnerUser = role == 2;
+        _loginPartnerCode = await AuthStateService.GetPartnerCodeAsync();
+
+        await LoadPartnersAsync();
+
+        if (IsNew)
+        {
+            InitializeCreateForm();
+        }
+        else
+        {
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+        }
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void InitializeCreateForm()
+    {
+        _createRequest = new UserCreateRequest();
+        _form = new UserUpdateRequest();
+
+        if (_isPartnerUser && _loginPartnerCode != null)
+        {
+            _createRequest.PartnerCode = _loginPartnerCode.Value;
+            _form.PartnerCode = _loginPartnerCode.Value;
+        }
+    }
+
+    private async Task LoadPartnersAsync()
+    {
+        try
+        {
+            if (!_isAdmin && _loginPartnerCode == null)
+            {
+                return;
+            }
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerListItemDto>>>(
+                "/api/admin/partners");
+
+            if (result == null || !result.Success)
+            {
+                return;
+            }
+
+            _partners = result.Data ?? new List<PartnerListItemDto>();
+        }
+        catch
+        {
+            // 파트너명 표시 보조용 조회이므로 실패해도 화면 자체를 막지 않는다.
+        }
+    }
+
+    private async Task LoadDetailAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<UserManageDetailDto>>(
+                $"/api/manage/users/{UserCode}");
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _detail = result.Data;
+            BindDetailToForm();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"담당자 상세 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<UserLogItemDto>>>(
+                $"/api/manage/users/{UserCode}/logs");
+
+            if (result == null || !result.Success)
+            {
+                return;
+            }
+
+            _logs = result.Data ?? new List<UserLogItemDto>();
+        }
+        catch
+        {
+            // 로그 조회 실패는 상세 화면 전체 오류로 처리하지 않는다.
+        }
+    }
+
+    private void BindDetailToForm()
+    {
+        _form = new UserUpdateRequest
+        {
+            UserCode = _detail.UserCode,
+            PartnerCode = _detail.PartnerCode,
+            UserName = _detail.UserName,
+            UserCell = _detail.UserCell,
+            UserEmail = _detail.UserEmail
+        };
+    }
+
+    private async Task CreateUserAsync()
+    {
+        _message = null;
+
+        _createRequest.PartnerCode = _isAdmin
+            ? _form.PartnerCode
+            : _loginPartnerCode;
+
+        _createRequest.UserName = _form.UserName;
+        _createRequest.UserCell = _form.UserCell;
+        _createRequest.UserEmail = _form.UserEmail;
+
+        if (_createRequest.PartnerCode == null || _createRequest.PartnerCode <= 0)
+        {
+            SetWarning("파트너사를 선택하세요.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_createRequest.UserId))
+        {
+            SetWarning("아이디를 입력하세요.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_createRequest.Password))
+        {
+            SetWarning("초기 비밀번호를 입력하세요.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_createRequest.UserName))
+        {
+            SetWarning("담당자명을 입력하세요.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            var result = await ApiClient.PostAsync<UserCreateRequest, ApiResponse<UserSaveResponse>>(
+                "/api/manage/users",
+                _createRequest);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("담당자가 등록되었습니다. 승인 후 사용할 수 있습니다.");
+            NavigationManager.NavigateTo($"/users/{result.Data.UserCode}", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"담당자 등록 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task UpdateUserAsync()
+    {
+        _message = null;
+
+        if (!_isAdmin)
+        {
+            SetWarning("담당자 정보 수정은 관리자만 가능합니다.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_form.UserName))
+        {
+            SetWarning("담당자명을 입력하세요.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            _form.UserCode = UserCode;
+
+            var result = await ApiClient.PutAsync<UserUpdateRequest, ApiResponse<UserSaveResponse>>(
+                $"/api/manage/users/{UserCode}",
+                _form);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("담당자 정보가 수정되었습니다.");
+            _editMode = false;
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"담당자 수정 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ApproveUserAsync()
+    {
+        await ProcessRequestAsync($"/api/manage/users/{UserCode}/approve", "담당자가 승인되었습니다.");
+    }
+
+    private async Task RejectRequestAsync()
+    {
+        await ProcessRequestAsync($"/api/manage/users/{UserCode}/reject", "요청이 반려되었습니다.");
+    }
+
+    private async Task ProcessRequestAsync(string url, string successMessage)
+    {
+        _message = null;
+        _isSaving = true;
+
+        try
+        {
+            var request = new UserRequestProcessRequest
+            {
+                Memo = _processMemo
+            };
+
+            var result = await ApiClient.PostAsync<UserRequestProcessRequest, ApiResponse<bool>>(
+                url,
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(successMessage);
+            _processMemo = null;
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"처리 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ChangeStatusAsync(int status)
+    {
+        _message = null;
+        _isSaving = true;
+
+        try
+        {
+            var request = new UserStatusChangeRequest
+            {
+                NewStatus = status,
+                Memo = _processMemo
+            };
+
+            var result = await ApiClient.PostAsync<UserStatusChangeRequest, ApiResponse<bool>>(
+                $"/api/manage/users/{UserCode}/status",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("상태가 변경되었습니다.");
+            _processMemo = null;
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"상태 변경 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_newPassword))
+        {
+            SetWarning("새 비밀번호를 입력하세요.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            var request = new UserPasswordChangeRequest
+            {
+                NewPassword = _newPassword,
+                Memo = _processMemo
+            };
+
+            var result = await ApiClient.PostAsync<UserPasswordChangeRequest, ApiResponse<bool>>(
+                $"/api/manage/users/{UserCode}/password-reset",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("비밀번호가 초기화되었습니다.");
+            _newPassword = null;
+            _processMemo = null;
+            await LoadLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"비밀번호 초기화 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CreateRequestAsync()
+    {
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_requestReason))
+        {
+            SetWarning("요청 사유를 입력하세요.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            var request = new UserRequestCreateRequest
+            {
+                UserCode = UserCode,
+                RequestType = _requestType,
+                RequestReason = _requestReason
+            };
+
+            var result = await ApiClient.PostAsync<UserRequestCreateRequest, ApiResponse<bool>>(
+                $"/api/manage/users/{UserCode}/requests",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("요청이 등록되었습니다.");
+            _requestReason = null;
+            await LoadDetailAsync();
+            await LoadLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"요청 등록 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void EnableEdit()
+    {
+        _editMode = true;
+    }
+
+    private void CancelEdit()
+    {
+        _editMode = false;
+        BindDetailToForm();
+    }
+
+    private void GoList()
+    {
+        NavigationManager.NavigateTo("/users");
+    }
+
+    private string GetLoginPartnerName()
+    {
+        var partnerCode = _form.PartnerCode ?? _loginPartnerCode;
+
+        if (partnerCode == null)
+        {
+            return "파트너사 미지정";
+        }
+
+        var partner = _partners.FirstOrDefault(x => x.PartnerCode == partnerCode.Value);
+
+        if (partner != null)
+        {
+            return partner.PartnerName;
+        }
+
+        return $"파트너코드 {partnerCode.Value}";
+    }
+
+    private string GetUserStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "승인대기",
+            1 => "정상",
+            2 => "일시중지",
+            3 => "무효",
+            9 => "차단",
+            _ => $"기타({status})"
+        };
+    }
+
+    private string GetUserStatusBadge(int status)
+    {
+        return status switch
+        {
+            0 => "badge bg-warning text-dark",
+            1 => "badge bg-success",
+            2 => "badge bg-secondary",
+            3 => "badge bg-dark",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private string GetRequestTypeName(int? requestType)
+    {
+        return requestType switch
+        {
+            null => "-",
+            1 => "가입승인",
+            2 => "정보수정",
+            3 => "비밀번호초기화",
+            4 => "일시중지",
+            5 => "정상복구",
+            6 => "무효",
+            9 => "차단",
+            _ => $"기타({requestType})"
+        };
+    }
+
+    private string GetRequestStatusName(int requestStatus)
+    {
+        return requestStatus switch
+        {
+            0 => "요청없음",
+            1 => "요청대기",
+            2 => "처리완료",
+            3 => "반려",
+            9 => "취소",
+            _ => $"기타({requestStatus})"
+        };
+    }
+
+    private string GetLogTypeName(int logType)
+    {
+        return logType switch
+        {
+            1 => "등록",
+            2 => "승인요청",
+            3 => "승인처리",
+            4 => "승인반려",
+            5 => "정보수정요청",
+            6 => "정보수정처리",
+            7 => "비밀번호변경",
+            8 => "비밀번호초기화",
+            9 => "일시중지요청",
+            10 => "일시중지처리",
+            11 => "정상복구요청",
+            12 => "정상복구처리",
+            13 => "무효요청",
+            14 => "무효처리",
+            15 => "차단요청",
+            16 => "차단처리",
+            _ => $"기타({logType})"
+        };
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

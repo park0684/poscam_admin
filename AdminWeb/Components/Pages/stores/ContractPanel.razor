@@ -1,0 +1,408 @@
+﻿@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Contract
+@using poscam.AdminWeb.Models.Store
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject NavigationManager NavigationManager
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>계약정보</strong>
+
+        <div class="d-flex gap-2">
+            @if (_isEditMode)
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                    수정 취소
+                </button>
+            }
+            else if (AllowMultipleContracts && !_showCreateForm)
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="ShowCreateForm">
+                    계약 등록
+                </button>
+            }
+            else if (_showCreateForm && _contracts.Count > 0)
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                    등록 취소
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="card-body">
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @MessageCss">
+                @_message
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="alert alert-info">
+                계약 목록을 불러오는 중입니다.
+            </div>
+        }
+        else if (_contracts.Count == 0)
+        {
+            <div class="alert alert-secondary">
+                등록된 계약이 없습니다. 아래에서 신규 계약을 등록하세요.
+            </div>
+        }
+        else
+        {
+            <table class="table table-sm table-striped align-middle mb-3">
+                <thead>
+                    <tr>
+                        <th>계약번호</th>
+                        <th>유형</th>
+                        <th>PC캠</th>
+                        <th>캠뷰어</th>
+                        <th>시작일</th>
+                        <th>종료일</th>
+                        <th>상태</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var contract in _contracts)
+                    {
+                        <tr>
+                            <td>@contract.ContractNo</td>
+                            <td>@GetContractTypeName(contract.ContractType)</td>
+                            <td>@contract.PccamCount</td>
+                            <td>@contract.ViewerCount</td>
+                            <td>@contract.StartDate.ToString("yyyy-MM-dd")</td>
+                            <td>@(contract.EndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                            <td>@GetStatusName(contract.Status)</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => EditContract(contract)">
+                                    수정
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (ShouldShowForm)
+        {
+            <div class="border rounded p-3 mb-3 bg-light">
+                <h6 class="mb-3">@(_isEditMode ? "계약 수정" : "신규 계약 등록")</h6>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">계약 유형</label>
+                        <select class="form-select" @bind="_request.ContractType">
+                            <option value="1">테스트형</option>
+                            <option value="2">구매형</option>
+                            <option value="3">구독형</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">PC캠 수량</label>
+                        <input class="form-control"
+                               type="number"
+                               min="0"
+                               @bind="_request.PccamCount" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">캠뷰어 수량</label>
+                        <input class="form-control"
+                               type="number"
+                               min="0"
+                               @bind="_request.ViewerCount" />
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">시작일</label>
+                        <InputDate class="form-control"
+                                   @bind-Value="_request.StartDate" />
+                        <small class="text-muted">
+                            테스트형 신규 등록은 서버 기준 오늘로 처리됩니다.
+                        </small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">종료일</label>
+                        <InputDate class="form-control"
+                                   @bind-Value="_request.EndDate" />
+                        <small class="text-muted">
+                            구독형은 종료일이 필요합니다.
+                        </small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">상태</label>
+                        <select class="form-select" @bind="_request.Status">
+                            <option value="1">정상</option>
+                            <option value="0">비활성</option>
+                            <option value="2">일시중지</option>
+                            <option value="9">종료/차단</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-primary"
+                            @onclick="SaveContractAsync"
+                            disabled="@_isSaving">
+                        @(_isSaving ? "저장 중..." : (_isEditMode ? "계약 수정" : "계약 등록"))
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int StoreCode { get; set; }
+    [Parameter]
+    public bool AllowMultipleContracts { get; set; } = true;
+
+    [Parameter]
+    public bool ShowContractList { get; set; } = true;
+
+    private bool _showCreateForm;
+
+    private bool _isLoading = true;
+
+    private bool _isSaving;
+
+    private bool _isSuccessMessage;
+
+    private bool _isEditMode => _request.ContractCode != null && _request.ContractCode > 0;
+
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private ContractSaveRequest _request = new();
+
+    private List<StoreContractDto> _contracts = new();
+
+    private bool ShouldShowForm => _contracts.Count == 0 || _isEditMode || _showCreateForm;
+
+    private void CancelEdit()
+    {
+        _message = null;
+        _showCreateForm = false;
+        ResetForm();
+    }
+    
+    private void ShowCreateForm()
+    {
+        _message = null;
+        ResetForm();
+        _showCreateForm = true;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        ResetForm();
+
+        await LoadContractsAsync();
+
+        _isLoading = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadContractsAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<StoreContractDto>>>(
+                $"/api/manage/stores/{StoreCode}/contracts");
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _contracts = result.Data ?? new List<StoreContractDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task SaveContractAsync()
+    {
+        _message = null;
+
+        if (StoreCode <= 0)
+        {
+            SetWarning("매장 저장 후 계약을 등록할 수 있습니다.");
+            return;
+        }
+
+        if (_request.PccamCount < 0)
+        {
+            SetWarning("PC캠 수량은 0보다 작을 수 없습니다.");
+            return;
+        }
+
+        if (_request.ViewerCount < 0)
+        {
+            SetWarning("캠뷰어 수량은 0보다 작을 수 없습니다.");
+            return;
+        }
+
+        if (_request.ContractType == 3 && _request.EndDate == null)
+        {
+            SetWarning("구독형 계약은 종료일이 필요합니다.");
+            return;
+        }
+
+
+
+        _request.StoreCode = StoreCode;
+        _showCreateForm = false;
+        _isSaving = true;
+
+        try
+        {
+            ApiResponse<ContractSaveResponse>? result;
+
+            if (_isEditMode)
+            {
+                result = await ApiClient.PutAsync<ContractSaveRequest, ApiResponse<ContractSaveResponse>>(
+                    $"/api/manage/contracts/{_request.ContractCode}",
+                    _request);
+            }
+            else
+            {
+                result = await ApiClient.PostAsync<ContractSaveRequest, ApiResponse<ContractSaveResponse>>(
+                    $"/api/manage/stores/{StoreCode}/contracts",
+                    _request);
+            }
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(result.Data.Created
+                ? $"계약이 등록되었습니다. 계약번호: {result.Data.ContractNo}"
+                : "계약 정보가 수정되었습니다.");
+
+            await LoadContractsAsync();
+            ResetForm();
+
+            
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 저장 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void EditContract(StoreContractDto contract)
+    {
+        _message = null;
+
+        _request = new ContractSaveRequest
+        {
+            ContractCode = contract.ContractCode,
+            StoreCode = contract.StoreCode,
+            ContractType = contract.ContractType,
+            PccamCount = contract.PccamCount,
+            ViewerCount = contract.ViewerCount,
+            StartDate = contract.StartDate,
+            EndDate = contract.EndDate,
+            Status = contract.Status
+        };
+    }
+
+    private void ResetForm()
+    {
+        _request = new ContractSaveRequest
+        {
+            StoreCode = StoreCode,
+            ContractCode = null,
+            ContractType = 1,
+            PccamCount = 1,
+            ViewerCount = 1,
+            StartDate = null,
+            EndDate = null,
+            Status = 1
+        };
+    }
+
+    private string GetContractTypeName(int type)
+    {
+        return type switch
+        {
+            1 => "테스트형",
+            2 => "구매형",
+            3 => "구독형",
+            _ => $"기타({type})"
+        };
+    }
+
+    private string GetStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "비활성",
+            1 => "정상",
+            2 => "일시중지",
+            9 => "종료/차단",
+            _ => $"기타({status})"
+        };
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

@@ -1,0 +1,430 @@
+﻿@page "/users"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Partner
+@using poscam.AdminWeb.Models.UserManage
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<PageTitle>담당자 관리</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">담당자 관리</h3>
+            <small class="text-muted">
+                파트너사 소속 담당자 계정을 조회하고 등록 상태를 확인합니다.
+            </small>
+        </div>
+
+        <button class="btn btn-primary" @onclick="CreateUser">
+            담당자 등록
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @MessageCss">
+            @_message
+        </div>
+    }
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header">
+            <strong>검색 조건</strong>
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">파트너사</label>
+
+                    @if (_isAdmin)
+                    {
+                        <select class="form-select" @bind="_selectedPartnerCode">
+                            <option value="0">전체 파트너사</option>
+                            @foreach (var partner in _partners)
+                            {
+                                <option value="@partner.PartnerCode">
+                                    @partner.PartnerName
+                                </option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-control"
+                               value="@GetLoginPartnerName()"
+                               readonly />
+                    }
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">사용자 상태</label>
+                    <select class="form-select" @bind="_selectedUserStatus">
+                        <option value="">전체</option>
+                        <option value="0">승인대기</option>
+                        <option value="1">정상</option>
+                        <option value="2">일시중지</option>
+                        <option value="3">무효</option>
+                        <option value="9">차단</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">요청 상태</label>
+                    <select class="form-select" @bind="_selectedRequestStatus">
+                        <option value="">전체</option>
+                        <option value="0">요청없음</option>
+                        <option value="1">요청대기</option>
+                        <option value="2">처리완료</option>
+                        <option value="3">반려</option>
+                        <option value="9">취소</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-primary w-100"
+                            @onclick="LoadUsersAsync">
+                        조회
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="alert alert-info">
+            담당자 목록을 불러오는 중입니다.
+        </div>
+    }
+    else if (_users.Count == 0)
+    {
+        <div class="alert alert-secondary">
+            조회된 담당자가 없습니다.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>담당자 목록</strong>
+                <small class="text-muted">총 @_users.Count</small>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-striped align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>담당자명</th>
+                            <th>아이디</th>
+                            <th>파트너사</th>
+                            <th>연락처</th>
+                            <th>이메일</th>
+                            <th>상태</th>
+                            <th>요청</th>
+                            <th>승인일</th>
+                            <th>등록일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in _users)
+                        {
+                            <tr>
+                                <td>
+                                    <button class="btn btn-link p-0 text-decoration-none"
+                                            @onclick="() => OpneUserPupupAsync(user.UserCode)">
+                                        @user.UserName
+                                    </button>
+                                </td>
+                                <td>@user.UserId</td>
+                                <td>@(user.PartnerName ?? "-")</td>
+                                <td>@(user.UserCell ?? "-")</td>
+                                <td>@(user.UserEmail ?? "-")</td>
+                                <td>
+                                    <span class="@GetUserStatusBadge(user.UserStatus)">
+                                        @GetUserStatusName(user.UserStatus)
+                                    </span>
+                                </td>
+                                <td>
+                                    <div>@GetRequestTypeName(user.UserRequestType)</div>
+                                    <small class="text-muted">
+                                        @GetRequestStatusName(user.UserRequestStatus)
+                                    </small>
+                                </td>
+                                <td>@(user.ApprovedAt?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                <td>@user.UserRdate.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+
+    private bool _isAdmin;
+
+    private bool _isPartnerUser;
+
+    private bool _isSuccessMessage;
+
+    private int? _loginPartnerCode;
+
+    private int _selectedPartnerCode;
+
+    private int? _selectedUserStatus;
+
+    private int? _selectedRequestStatus;
+
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private List<PartnerListItemDto> _partners = new();
+
+    private List<UserManageListItemDto> _users = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var role = await AuthStateService.GetUserRoleAsync();
+
+        _isAdmin = role == 1;
+        _isPartnerUser = role == 2;
+        _loginPartnerCode = await AuthStateService.GetPartnerCodeAsync();
+
+        if (_isAdmin)
+        {
+            await LoadPartnersAsync();
+        }
+        else if (_isPartnerUser)
+        {
+            if (_loginPartnerCode != null)
+            {
+                _selectedPartnerCode = _loginPartnerCode.Value;
+            }
+        }
+
+        await LoadUsersAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPartnersAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerListItemDto>>>(
+                "/api/admin/partners");
+
+            if (result == null)
+            {
+                SetWarning("파트너사 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _partners = result.Data ?? new List<PartnerListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"파트너사 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        _message = null;
+
+        try
+        {
+            var query = BuildQueryString();
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<UserManageListItemDto>>>(
+                $"/api/manage/users{query}");
+
+            if (result == null)
+            {
+                SetWarning("담당자 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _users = result.Data ?? new List<UserManageListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"담당자 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private string BuildQueryString()
+    {
+        var query = new List<string>();
+
+        if (_isAdmin)
+        {
+            if (_selectedPartnerCode > 0)
+            {
+                query.Add($"partnerCode={_selectedPartnerCode}");
+            }
+        }
+        else if (_isPartnerUser && _loginPartnerCode != null)
+        {
+            query.Add($"partnerCode={_loginPartnerCode.Value}");
+        }
+
+        if (_selectedUserStatus != null)
+        {
+            query.Add($"userStatus={_selectedUserStatus.Value}");
+        }
+
+        if (_selectedRequestStatus != null)
+        {
+            query.Add($"requestStatus={_selectedRequestStatus.Value}");
+        }
+
+        if (query.Count == 0)
+        {
+            return "";
+        }
+
+        return "?" + string.Join("&", query);
+    }
+
+    private void CreateUser()
+    {
+        NavigationManager.NavigateTo("/users/new");
+    }
+    /// <summary>
+    /// 담당자 상세 팝업을 연다.
+    ///
+    /// 기존 방식:
+    /// - NavigationManager.NavigateTo($"/users/{userCode}")
+    ///
+    /// 변경 방식:
+    /// - popup.js의 poscamPopup.openUserDetail(userCode)를 호출한다.
+    /// - 실제 팝업 URL은 /users/popup/{userCode} 이다.
+    /// </summary>
+    private async Task OpneUserPupupAsync(int userCode)
+    {
+        if (userCode <= 0)
+        {
+            return;
+        }
+		await JS.InvokeVoidAsync("poscamPopup.openUserDetail", userCode);
+    }
+
+    private string GetLoginPartnerName()
+    {
+        if (_loginPartnerCode == null)
+        {
+            return "파트너사 미지정";
+        }
+
+        var partner = _partners.FirstOrDefault(x => x.PartnerCode == _loginPartnerCode.Value);
+
+        if (partner != null)
+        {
+            return partner.PartnerName;
+        }
+
+        return $"파트너코드 {_loginPartnerCode.Value}";
+    }
+
+    private string GetUserStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "승인대기",
+            1 => "정상",
+            2 => "일시중지",
+            3 => "무효",
+            9 => "차단",
+            _ => $"기타({status})"
+        };
+    }
+
+    private string GetUserStatusBadge(int status)
+    {
+        return status switch
+        {
+            0 => "badge bg-warning text-dark",
+            1 => "badge bg-success",
+            2 => "badge bg-secondary",
+            3 => "badge bg-dark",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private string GetRequestTypeName(int? requestType)
+    {
+        return requestType switch
+        {
+            null => "-",
+            1 => "가입승인",
+            2 => "정보수정",
+            3 => "비밀번호초기화",
+            4 => "일시중지",
+            5 => "정상복구",
+            6 => "무효",
+            9 => "차단",
+            _ => $"기타({requestType})"
+        };
+    }
+
+    private string GetRequestStatusName(int requestStatus)
+    {
+        return requestStatus switch
+        {
+            0 => "요청없음",
+            1 => "요청대기",
+            2 => "처리완료",
+            3 => "반려",
+            9 => "취소",
+            _ => $"기타({requestStatus})"
+        };
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

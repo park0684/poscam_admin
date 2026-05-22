@@ -1,0 +1,91 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>대시보드</PageTitle>
+
+@if (_isChecking)
+{
+    <div class="container mt-5">
+        <div class="alert alert-info">
+            로그인 상태를 확인하는 중입니다.
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-4">
+        <h3>POSCAM 관리자 대시보드</h3>
+
+        <div class="row g-3 mt-2">
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>매장 관리</h5>
+                        <p class="text-muted">매장 목록 및 상세정보 관리</p>
+                        <button class="btn btn-outline-primary btn-sm"
+                                @onclick='() => MoveTo("/stores")'>
+                            바로가기
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>파트너사 관리</h5>
+                        <p class="text-muted">파트너사 등록 및 수정</p>
+                        <button class="btn btn-outline-primary btn-sm"
+                                @onclick='() => MoveTo("/partners")'>
+                            바로가기
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>담당자 관리</h5>
+                        <p class="text-muted">담당자 등록, 승인, 상태관리</p>
+                        <button class="btn btn-outline-primary btn-sm"
+                                @onclick='() => MoveTo("/users")'>
+                            바로가기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isChecking = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var token = await AuthStateService.GetTokenAsync();
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        _isChecking = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void MoveTo(string url)
+    {
+        NavigationManager.NavigateTo(url);
+    }
+}

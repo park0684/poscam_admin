@@ -1,0 +1,43 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36623.8
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "poscam.AuthServer", "poscam.AuthServer.csproj", "{16E1D42A-5CEA-4F4D-9B97-BDBE4E542361}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "poscam.AdminWeb", "..\poscam.AdminWeb\poscam.AdminWeb.csproj", "{996160CC-B61A-4C9C-9741-B68F857C6958}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PccAuthClient", "..\poscam.PccAuthClient\PccAuthClient.csproj", "{661B9DC4-B3FA-466D-BD66-C95174D447CF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthApp", "..\AuthApp\AuthApp.csproj", "{440BDBAF-9909-49BD-A850-04544018E024}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{16E1D42A-5CEA-4F4D-9B97-BDBE4E542361}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16E1D42A-5CEA-4F4D-9B97-BDBE4E542361}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16E1D42A-5CEA-4F4D-9B97-BDBE4E542361}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16E1D42A-5CEA-4F4D-9B97-BDBE4E542361}.Release|Any CPU.Build.0 = Release|Any CPU
+		{996160CC-B61A-4C9C-9741-B68F857C6958}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{996160CC-B61A-4C9C-9741-B68F857C6958}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{996160CC-B61A-4C9C-9741-B68F857C6958}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{996160CC-B61A-4C9C-9741-B68F857C6958}.Release|Any CPU.Build.0 = Release|Any CPU
+		{661B9DC4-B3FA-466D-BD66-C95174D447CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{661B9DC4-B3FA-466D-BD66-C95174D447CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{661B9DC4-B3FA-466D-BD66-C95174D447CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{661B9DC4-B3FA-466D-BD66-C95174D447CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{440BDBAF-9909-49BD-A850-04544018E024}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{440BDBAF-9909-49BD-A850-04544018E024}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{440BDBAF-9909-49BD-A850-04544018E024}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{440BDBAF-9909-49BD-A850-04544018E024}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {85FFDBEB-B8C9-4AFC-B259-724B8B5F4FF1}
+	EndGlobalSection
+EndGlobal

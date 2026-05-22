@@ -1,0 +1,382 @@
+﻿@page "/settlements/partner-monthly"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Partner
+@using poscam.AdminWeb.Models.Settlement
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>파트너사별 월 정산</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">파트너사별 월 정산</h3>
+            <small class="text-muted">
+                계약 청구자료를 파트너사별로 합산하여 월 정산 금액과 납부 상태를 확인합니다.
+            </small>
+        </div>
+
+        <button class="btn btn-outline-secondary" @onclick="GoDashboard">
+            대시보드
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @MessageCss">
+            @_message
+        </div>
+    }
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header">
+            <strong>검색 조건</strong>
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label">청구월</label>
+                    <input class="form-control"
+                           type="number"
+                           placeholder="예: 202605"
+                           @bind="_billMonth" />
+                </div>
+
+                <div class="col-md-5">
+                    <label class="form-label">파트너사</label>
+
+                    @if (_isAdmin)
+                    {
+                        <select class="form-select" @bind="_selectedPartnerCode">
+                            <option value="0">전체 파트너사</option>
+                            @foreach (var partner in _partners)
+                            {
+                                <option value="@partner.PartnerCode">
+                                    @partner.PartnerName
+                                </option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-control" value="본인 소속 파트너사" readonly />
+                    }
+                </div>
+
+                <div class="col-md-2 d-flex align-items-end">
+                    <button class="btn btn-outline-primary w-100"
+                            @onclick="LoadSettlementsAsync"
+                            disabled="@_isLoading">
+                        조회
+                    </button>
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary w-100"
+                            @onclick="GoContractCharges">
+                        계약 청구내역 보기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">파트너사 수</div>
+                    <h4 class="mb-0">@_settlements.Count.ToString("N0")개</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">계약 건수</div>
+                    <h4 class="mb-0">@_settlements.Sum(x => x.ContractCount).ToString("N0")건</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">총 정산 금액</div>
+                    <h4 class="mb-0">@FormatMoney(_settlements.Sum(x => x.TotalAmount))</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">미납 금액</div>
+                    <h4 class="mb-0">@FormatMoney(_settlements.Sum(x => x.RemainAmount))</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="alert alert-info">
+            파트너사별 월 정산 내역을 불러오는 중입니다.
+        </div>
+    }
+    else if (_settlements.Count == 0)
+    {
+        <div class="alert alert-secondary">
+            조회된 파트너사별 월 정산 내역이 없습니다.
+            먼저 월별 계약 청구자료를 생성해야 합니다.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>파트너사별 월 정산 목록</strong>
+                <small class="text-muted">총 @_settlements.Count</small>
+            </div>
+
+            <div class="table-responsive" style="max-height: 620px; overflow-y: auto;">
+                <table class="table table-hover table-striped align-middle mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>파트너사</th>
+                            <th class="text-end">계약 수</th>
+                            <th class="text-end">PC캠 수량</th>
+                            <th class="text-end">캠뷰어 수량</th>
+                            <th class="text-end">PC캠 금액</th>
+                            <th class="text-end">캠뷰어 금액</th>
+                            <th class="text-end">총 정산 금액</th>
+                            <th class="text-end">납부 금액</th>
+                            <th class="text-end">미납 금액</th>
+                            <th>납부 상태</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _settlements)
+                        {
+                            <tr>
+                                <td>@(item.PartnerName ?? $"파트너코드 {item.PartnerCode}")</td>
+                                <td class="text-end">@item.ContractCount.ToString("N0")</td>
+                                <td class="text-end">@item.PccamTotalCount.ToString("N0")</td>
+                                <td class="text-end">@item.ViewerTotalCount.ToString("N0")</td>
+                                <td class="text-end">@FormatMoney(item.PccamTotalAmount)</td>
+                                <td class="text-end">@FormatMoney(item.ViewerTotalAmount)</td>
+                                <td class="text-end fw-bold">@FormatMoney(item.TotalAmount)</td>
+                                <td class="text-end">@FormatMoney(item.PaidAmount)</td>
+                                <td class="text-end">@FormatMoney(item.RemainAmount)</td>
+                                <td>
+                                    <span class="@GetPaymentStatusBadge(item.PaymentStatus)">
+                                        @GetPaymentStatusName(item.PaymentStatus)
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            @onclick="() => GoPayment(item.PartnerCode)">
+                                        납부 처리
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private bool _isAdmin;
+    private bool _isSuccessMessage;
+
+    private int _billMonth;
+    private int _selectedPartnerCode;
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private List<PartnerListItemDto> _partners = new();
+    private List<PartnerMonthlySettlementDto> _settlements = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _billMonth = GetCurrentMonth();
+
+        var role = await AuthStateService.GetUserRoleAsync();
+        _isAdmin = role == 1;
+
+        if (_isAdmin)
+        {
+            await LoadPartnersAsync();
+        }
+
+        await LoadSettlementsAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPartnersAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerListItemDto>>>(
+                "/api/admin/partners");
+
+            if (result == null)
+            {
+                SetWarning("파트너사 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _partners = result.Data ?? new List<PartnerListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"파트너사 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadSettlementsAsync()
+    {
+        _message = null;
+
+        if (!TryParseMonth(_billMonth))
+        {
+            SetWarning("청구월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var url = $"/api/manage/settlements/partners?billMonth={_billMonth}";
+
+            if (_isAdmin && _selectedPartnerCode > 0)
+            {
+                url += $"&partnerCode={_selectedPartnerCode}";
+            }
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerMonthlySettlementDto>>>(url);
+
+            if (result == null)
+            {
+                SetWarning("파트너사별 월 정산 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _settlements = result.Data ?? new List<PartnerMonthlySettlementDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"파트너사별 월 정산 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static int GetCurrentMonth()
+    {
+        var now = DateTime.Now;
+        return now.Year * 100 + now.Month;
+    }
+
+    private static bool TryParseMonth(int value)
+    {
+        var year = value / 100;
+        var month = value % 100;
+
+        return year is >= 2000 and <= 2099
+               && month is >= 1 and <= 12;
+    }
+
+    private static string FormatMoney(int value)
+    {
+        return value.ToString("N0") + "원";
+    }
+
+    private static string GetPaymentStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "미처리",
+            1 => "미납",
+            2 => "부분납부",
+            3 => "납부완료",
+            4 => "보류",
+            9 => "취소",
+            _ => $"기타({status})"
+        };
+    }
+
+    private static string GetPaymentStatusBadge(int status)
+    {
+        return status switch
+        {
+            0 => "badge bg-secondary",
+            1 => "badge bg-danger",
+            2 => "badge bg-warning text-dark",
+            3 => "badge bg-success",
+            4 => "badge bg-dark",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private void GoPayment(int partnerCode)
+    {
+        NavigationManager.NavigateTo($"/settlements/payments?billMonth={_billMonth}&partnerCode={partnerCode}");
+    }
+
+    private void GoContractCharges()
+    {
+        NavigationManager.NavigateTo($"/settlements/contract-charges");
+    }
+
+    private void GoDashboard()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

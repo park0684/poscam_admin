@@ -1,0 +1,645 @@
+﻿@page "/settlements/contract-charges"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Partner
+@using poscam.AdminWeb.Models.Settlement
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>월별 계약 청구내역</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">월별 계약 청구내역</h3>
+            <small class="text-muted">
+                계약서 등록 수량과 파트너사 단가를 기준으로 월별 청구자료를 생성하고 조회합니다.
+            </small>
+        </div>
+
+        <button class="btn btn-outline-secondary" @onclick="GoDashboard">
+            대시보드
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @MessageCss">
+            @_message
+        </div>
+    }
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header">
+            <strong>계약 청구자료 조회 / 생성</strong>
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <label class="form-label">청구월</label>
+                    <input class="form-control"
+                           type="number"
+                           placeholder="예: 202605"
+                           @bind="_billMonth" />
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">파트너사</label>
+
+                    @if (_isAdmin)
+                    {
+                        <select class="form-select" @bind="_selectedPartnerCode">
+                            <option value="0">전체 파트너사</option>
+                            @foreach (var partner in _partners)
+                            {
+                                <option value="@partner.PartnerCode">
+                                    @partner.PartnerName
+                                </option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-control" value="본인 소속 파트너사" readonly />
+                    }
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">납부 상태</label>
+                    <select class="form-select" @bind="_paymentStatusText">
+                        <option value="">전체</option>
+                        <option value="0">미처리</option>
+                        <option value="1">미납</option>
+                        <option value="2">부분납부</option>
+                        <option value="3">납부완료</option>
+                        <option value="4">보류</option>
+                        <option value="9">취소</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                    <button class="btn btn-outline-primary w-100"
+                            @onclick="LoadContractChargesAsync"
+                            disabled="@_isLoading">
+                        조회
+                    </button>
+                </div>
+            </div>
+
+            @if (_isAdmin)
+            {
+                <hr />
+
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="regenPending"
+                                   @bind="_regeneratePending" />
+                            <label class="form-check-label" for="regenPending">
+                                청구대기 자료 삭제 후 재생성
+                            </label>
+                        </div>
+
+                        <small class="text-muted">
+                            청구확정 또는 납부 처리된 자료가 있으면 재생성할 수 없습니다.
+                        </small>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100"
+                                @onclick="GenerateContractChargesAsync"
+                                disabled="@_isGenerating">
+                            @(_isGenerating ? "생성 중..." : "계약 청구자료 생성")
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-success w-100"
+                                @onclick="ConfirmContractChargesAsync"
+                                disabled="@_isGenerating">
+                            청구 확정
+                        </button>
+                    </div>
+
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-danger w-100"
+                                @onclick="ResetContractChargesAsync"
+                                disabled="@_isGenerating">
+                            청구초기화
+                        </button>
+                    </div>
+
+                    <div class="col-md-3">
+                        @if (_generateMessages.Count > 0)
+                        {
+                            <div class="small text-muted">
+                                @foreach (var msg in _generateMessages)
+                                {
+                                    <div>- @msg</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">계약 건수</div>
+                    <h4 class="mb-0">@_contractCharges.Count.ToString("N0")건</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">PC캠 총 수량</div>
+                    <h4 class="mb-0">@_contractCharges.Sum(x => x.BillPccamCount).ToString("N0")대</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">캠뷰어 총 수량</div>
+                    <h4 class="mb-0">@_contractCharges.Sum(x => x.BillViewerCount).ToString("N0")대</h4>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">총 청구금액</div>
+                    <h4 class="mb-0">@FormatMoney(_contractCharges.Sum(x => x.BillTotalAmount))</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="alert alert-info">
+            계약별 청구내역을 불러오는 중입니다.
+        </div>
+    }
+    else if (_contractCharges.Count == 0)
+    {
+        <div class="alert alert-secondary">
+            조회된 계약 청구내역이 없습니다.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>계약별 청구내역</strong>
+                <small class="text-muted">총 @_contractCharges.Count</small>
+            </div>
+
+            <div class="table-responsive" style="max-height: 620px; overflow-y: auto;">
+                <table class="table table-hover table-striped align-middle mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>파트너사</th>
+                            <th>매장</th>
+                            <th>계약번호</th>
+                            <th class="text-end">PC캠 수량</th>
+                            <th class="text-end">캠뷰어 수량</th>
+                            <th class="text-end">PC캠 단가</th>
+                            <th class="text-end">캠뷰어 단가</th>
+                            <th class="text-end">PC캠 금액</th>
+                            <th class="text-end">캠뷰어 금액</th>
+                            <th class="text-end">총액</th>
+                            <th>청구</th>
+                            <th>납부</th>
+                            <th>생성일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _contractCharges)
+                        {
+                            <tr>
+                                <td>@(item.PartnerName ?? $"파트너코드 {item.PartnerCode}")</td>
+                                <td>@(item.StoreName ?? $"매장코드 {item.StoreCode}")</td>
+                                <td>@(item.ContractNo ?? item.ContractCode.ToString())</td>
+                                <td class="text-end">@item.BillPccamCount.ToString("N0")</td>
+                                <td class="text-end">@item.BillViewerCount.ToString("N0")</td>
+                                <td class="text-end">@FormatMoney(item.BillPccamUnitPrice)</td>
+                                <td class="text-end">@FormatMoney(item.BillViewerUnitPrice)</td>
+                                <td class="text-end">@FormatMoney(item.BillPccamAmount)</td>
+                                <td class="text-end">@FormatMoney(item.BillViewerAmount)</td>
+                                <td class="text-end fw-bold">@FormatMoney(item.BillTotalAmount)</td>
+                                <td>
+                                    <span class="@GetChargeStatusBadge(item.BillStatus)">
+                                        @GetChargeStatusName(item.BillStatus)
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="@GetPaymentStatusBadge(item.PaymentStatus)">
+                                        @GetPaymentStatusName(item.PaymentStatus)
+                                    </span>
+                                </td>
+                                <td>@item.BillRdate.ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private bool _isGenerating;
+    private bool _isAdmin;
+    private bool _isSuccessMessage;
+    private bool _regeneratePending;
+
+    private int _billMonth;
+    private int _selectedPartnerCode;
+    private string? _paymentStatusText;
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private List<PartnerListItemDto> _partners = new();
+    private List<ContractBillingListItemDto> _contractCharges = new();
+    private List<string> _generateMessages = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _billMonth = GetCurrentMonth();
+
+        var role = await AuthStateService.GetUserRoleAsync();
+        _isAdmin = role == 1;
+
+        if (_isAdmin)
+        {
+            await LoadPartnersAsync();
+        }
+
+        await LoadContractChargesAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadPartnersAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerListItemDto>>>(
+                "/api/admin/partners");
+
+            if (result == null)
+            {
+                SetWarning("파트너사 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _partners = result.Data ?? new List<PartnerListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"파트너사 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadContractChargesAsync()
+    {
+        _message = null;
+        _generateMessages.Clear();
+
+        if (!TryParseMonth(_billMonth))
+        {
+            SetWarning("청구월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var url = $"/api/manage/settlements/contract-charges?billMonth={_billMonth}";
+
+            if (_isAdmin && _selectedPartnerCode > 0)
+            {
+                url += $"&partnerCode={_selectedPartnerCode}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_paymentStatusText))
+            {
+                url += $"&paymentStatus={_paymentStatusText}";
+            }
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<ContractBillingListItemDto>>>(url);
+
+            if (result == null)
+            {
+                SetWarning("계약 청구내역 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _contractCharges = result.Data ?? new List<ContractBillingListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 청구내역 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task GenerateContractChargesAsync()
+    {
+        _message = null;
+        _generateMessages.Clear();
+
+        if (!_isAdmin)
+        {
+            SetWarning("계약 청구자료 생성은 관리자만 가능합니다.");
+            return;
+        }
+
+        if (!TryParseMonth(_billMonth))
+        {
+            SetWarning("청구월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        _isGenerating = true;
+
+        try
+        {
+            var request = new BillingGenerateRequest
+            {
+                BillMonth = _billMonth,
+                PartnerCode = _selectedPartnerCode > 0 ? _selectedPartnerCode : null,
+                RegeneratePending = _regeneratePending
+            };
+
+            var result = await ApiClient.PostAsync<BillingGenerateRequest, ApiResponse<BillingGenerateResponse>>(
+                "/api/manage/settlements/contract-charges/generate",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _generateMessages = result.Data.Messages ?? new List<string>();
+
+            SetSuccess($"계약 청구자료 생성 완료: {result.Data.CreatedCount:N0}건 / 제외 {result.Data.SkippedCount:N0}건 / 총액 {FormatMoney(result.Data.TotalAmount)}");
+
+            await LoadContractChargesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 청구자료 생성 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private static int GetCurrentMonth()
+    {
+        var now = DateTime.Now;
+        return now.Year * 100 + now.Month;
+    }
+
+    private static bool TryParseMonth(int value)
+    {
+        var year = value / 100;
+        var month = value % 100;
+
+        return year is >= 2000 and <= 2099
+               && month is >= 1 and <= 12;
+    }
+
+    private static string FormatMoney(int value)
+    {
+        return value.ToString("N0") + "원";
+    }
+
+    private static string GetChargeStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "생성대기",
+            1 => "청구대기",
+            2 => "청구확정",
+            9 => "취소",
+            _ => $"기타({status})"
+        };
+    }
+
+    private async Task ConfirmContractChargesAsync()
+    {
+        _message = null;
+        _generateMessages.Clear();
+
+        if (!_isAdmin)
+        {
+            SetWarning("계약 청구자료 확정은 관리자만 가능합니다.");
+            return;
+        }
+
+        if (!TryParseMonth(_billMonth))
+        {
+            SetWarning("청구월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        _isGenerating = true;
+
+        try
+        {
+            var request = new ContractChargeConfirmRequest
+            {
+                BillMonth = _billMonth,
+                PartnerCode = _selectedPartnerCode > 0 ? _selectedPartnerCode : null,
+                Memo = "계약 청구자료 확정"
+            };
+
+            var result = await ApiClient.PostAsync<ContractChargeConfirmRequest, ApiResponse<ContractChargeStatusChangeResponse>>(
+                "/api/manage/settlements/contract-charges/confirm",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(result.Data.Message);
+            await LoadContractChargesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 청구자료 확정 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private async Task ResetContractChargesAsync()
+    {
+        _message = null;
+        _generateMessages.Clear();
+
+        if (!_isAdmin)
+        {
+            SetWarning("계약 청구자료 취소는 관리자만 가능합니다.");
+            return;
+        }
+
+        if (!TryParseMonth(_billMonth))
+        {
+            SetWarning("청구월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        _isGenerating = true;
+        try
+        {
+            var request = new ContractChargeConfirmRequest
+                {
+                    BillMonth = _billMonth,
+                    PartnerCode = _selectedPartnerCode > 0 ? _selectedPartnerCode : null,
+                    Memo = "청구대기 계약 청구자료 취소"
+                };
+
+            var result = await ApiClient.PostAsync<ContractChargeConfirmRequest, ApiResponse<ContractChargeStatusChangeResponse>>(
+                "/api/manage/settlements/contract-charges/reset-confirmed",
+                request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(result.Data.Message);
+            await LoadContractChargesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 청구자료 취소 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private static string GetChargeStatusBadge(int status)
+    {
+        return status switch
+        {
+            0 => "badge bg-secondary",
+            1 => "badge bg-info text-dark",
+            2 => "badge bg-primary",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private static string GetPaymentStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "미처리",
+            1 => "미납",
+            2 => "부분납부",
+            3 => "납부완료",
+            4 => "보류",
+            9 => "취소",
+            _ => $"기타({status})"
+        };
+    }
+
+    private static string GetPaymentStatusBadge(int status)
+    {
+        return status switch
+        {
+            0 => "badge bg-secondary",
+            1 => "badge bg-danger",
+            2 => "badge bg-warning text-dark",
+            3 => "badge bg-success",
+            4 => "badge bg-dark",
+            9 => "badge bg-danger",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private void GoDashboard()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

@@ -1,0 +1,553 @@
+﻿@page "/stores/popup/{StoreCode:int}"
+@layout poscam.AdminWeb.Components.Layout.PopupLayout
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Store
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject NavigationManager NavigationManager
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<PageTitle>매장 상세정보</PageTitle>
+
+<div class="store-popup">
+    <div class="popup-header">
+        <div>
+            <h5 class="mb-0">매장 상세정보</h5>
+            <small class="text-muted">
+                StoreCode: @StoreCode
+            </small>
+        </div>
+
+        <button class="btn btn-sm btn-outline-secondary"
+                @onclick="ClosePopup">
+            닫기
+        </button>
+    </div>
+
+    <div class="popup-body">
+        <ul class="nav nav-tabs popup-tab-header">
+            <li class="nav-item">
+                <button type="button"
+                        class="@GetTabClass("basic")"
+                        @onclick="@(() => _activeTab = "basic")">
+                    매장 기본정보
+                </button>
+            </li>
+
+            <li class="nav-item">
+                <button type="button"
+                        class="@GetTabClass("license")"
+                        @onclick="@(() => _activeTab = "license")">
+                    라이선스 / 계약정보
+                </button>
+            </li>
+
+            <li class="nav-item">
+                <button type="button"
+                        class="@GetTabClass("device")"
+                        @onclick="@(() => _activeTab = "device")">
+                    디바이스 정보
+                </button>
+            </li>
+        </ul>
+
+
+        @if (_activeTab == "basic")
+        {
+            <div class="tab-area">
+                @if (!string.IsNullOrWhiteSpace(_message))
+                {
+                    <div class="alert @MessageCss">
+                        @_message
+                    </div>
+                }
+
+                <div class="row g-3">
+                    <!-- 좌측: 매장 기본정보 -->
+                    <div class="col-lg-8">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">
+                                <strong>매장 기본 정보</strong>
+                            </div>
+
+                            <div class="card-body">
+                                <div class="row mb-3 justify-content-start">
+                                    <div class="col-md-3">
+                                        <label class="form-label">매장 ID</label>
+                                        <input class="form-control form-control-sm"
+                                               value="@_storeId"
+                                               readonly />
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label class="form-label">상태</label>
+                                        <select class="form-select form-select-sm"
+                                                @bind="_request.StoreStatus">
+                                            <option value="1">정상</option>
+                                            <option value="0">비활성</option>
+                                            <option value="2">일시중지</option>
+                                            <option value="9">차단</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3 g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">
+                                            매장명 <span class="text-danger">*</span>
+                                        </label>
+                                        <input class="form-control"
+                                               @bind="_request.StoreName" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">대표자명</label>
+                                        <input class="form-control"
+                                               @bind="_request.StoreOwnerName" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3 g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">사업자번호</label>
+                                        <input class="form-control"
+                                               @bind="_request.StoreBizNum" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">연락처</label>
+                                        <input class="form-control"
+                                               @bind="_request.StoreTel" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3 g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">주소</label>
+                                        <input class="form-control"
+                                               @bind="_addressText" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">이메일</label>
+                                        <input class="form-control"
+                                               @bind="_request.StoreEmail" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">메모</label>
+                                    <textarea class="form-control"
+                                              rows="2"
+                                              @bind="_request.StoreMemo"></textarea>
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <button class="btn btn-primary"
+                                            @onclick="SaveStoreAsync"
+                                            disabled="@_isSaving">
+                                        @(_isSaving ? "저장 중..." : "매장정보 저장")
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 우측: 담당자 정보 + 계약 수량 요약 -->
+                    <div class="col-lg-4">
+                        <div class="side-card-stack">
+                            <div class="card shadow-sm">
+                                <div class="card-header">
+                                    <strong>담당자 정보</strong>
+                                </div>
+
+                                <div class="card-body">
+                                    <div class="row mb-3 align-items-center">
+                                        <div class="col-4">
+                                            <label class="form-label mb-0">파트너</label>
+                                        </div>
+                                        <div class="col-8">
+                                            <input class="form-control form-control-sm"
+                                                   value="@_primaryPartnerName"
+                                                   readonly />
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3 align-items-center">
+                                        <div class="col-4">
+                                            <label class="form-label mb-0">담당자</label>
+                                        </div>
+                                        <div class="col-8">
+                                            <input class="form-control form-control-sm"
+                                                   value="@_primaryUserName"
+                                                   readonly />
+                                        </div>
+                                    </div>
+
+                                    <div class="row align-items-center">
+                                        <div class="col-4">
+                                            <label class="form-label mb-0">연락처</label>
+                                        </div>
+                                        <div class="col-8">
+                                            <input class="form-control form-control-sm"
+                                                   value="@_primaryUserCell"
+                                                   readonly />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card shadow-sm">
+                                <div class="card-header">
+                                    <strong>계약 수량 요약</strong>
+                                </div>
+
+                                <div class="card-body">
+                                    <div class="row mb-3 align-items-center">
+                                        <div class="col-5">
+                                            <label class="form-label mb-0">PC캠</label>
+                                        </div>
+                                        <div class="col-7">
+                                            <input class="form-control form-control-sm"
+                                                   value="@($"{_contractPccamCount:N0}대")"
+                                                   readonly />
+                                        </div>
+                                    </div>
+
+                                    <div class="row align-items-center">
+                                        <div class="col-5">
+                                            <label class="form-label mb-0">캠뷰어</label>
+                                        </div>
+                                        <div class="col-7">
+                                            <input class="form-control form-control-sm"
+                                                   value="@($"{_contractViewerCount:N0}대")"
+                                                   readonly />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_activeTab == "license")
+        {
+            <div class="tab-area">
+                <ContractPanel StoreCode="@StoreCode"
+                               ShowContractList="true"
+                               AllowMultipleContracts="true" />
+                <LicensePanel StoreCode="@StoreCode"
+                              HideLicenseKey="true"
+                              MaxVisibleRows="10" />
+            </div>
+        }
+
+        @if (_activeTab == "device")
+        {
+            <div class="tab-area">
+                <div class="row g-3">
+                    <div class="col-lg-12">
+                        <DevicePanel StoreCode="@StoreCode" />
+                    </div>
+        
+                    <div class="col-lg-12">
+                        <NvrConfigPanel StoreCode="@StoreCode"
+                                        Title="NVR / 채널 설정 정보" />
+                    </div>
+                </div>
+            </div>
+        }
+     </div>
+</div>
+
+
+<style>
+    .store-popup {
+        width: 1420px;
+        height: 720px;
+        overflow: hidden;
+        background-color: #f8f9fa;
+    }
+
+    .popup-header {
+        height: 64px;
+        padding: 12px 18px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .popup-body {
+        height: calc(720px - 64px);
+        padding: 14px 18px;
+        overflow: hidden;
+    }
+
+    .popup-tab-header {
+        height: 42px;
+        margin-bottom: 12px;
+    }
+
+    .tab-area {
+        height: calc(720px - 64px - 14px - 14px - 42px - 12px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 6px;
+    }
+
+    .tab-area .card {
+        margin-bottom: 12px;
+    }
+
+    .tab-area .card:last-child {
+                margin-bottom: 0;
+    }
+
+    .side-card-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .summary-value {
+        font-size: 1.2rem;
+        font-weight: 600;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int StoreCode { get; set; }
+
+    private string _activeTab = "basic";
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _isSuccessMessage;
+
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage
+        ? "alert-success"
+        : "alert-warning";
+
+    private string _storeId = "";
+
+    private string _primaryPartnerName = "";
+    private string _primaryUserName = "";
+    private string _primaryUserCell = "";
+
+    private int _contractPccamCount;
+    private int _contractViewerCount;
+
+    // 팝업에서는 주소와 상세주소를 한 줄로 표시하기 위한 값
+    private string _addressText = "";
+
+    // 조회 결과 원본
+    private StoreDetailResponse _detail = new();
+
+    // 저장 요청용 DTO
+    private StoreSaveRequest _request = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+        await LoadDetailAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadDetailAsync()
+    {
+        _message = null;
+
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<StoreDetailResponse>>(
+                $"/api/manage/stores/{StoreCode}/detail");
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _detail = result.Data;
+
+            _storeId = _detail.Store.StoreId;
+
+            _request = new StoreSaveRequest
+            {
+                StoreCode = _detail.Store.StoreCode,
+                StoreName = _detail.Store.StoreName,
+                StoreBizNum = _detail.Store.StoreBizNum,
+                StoreOwnerName = _detail.Store.StoreOwnerName,
+                StoreTel = _detail.Store.StoreTel,
+                StoreEmail = _detail.Store.StoreEmail,
+                StoreZipcode = _detail.Store.StoreZipcode,
+                StoreAddress1 = _detail.Store.StoreAddress1,
+                StoreAddress2 = _detail.Store.StoreAddress2,
+                StoreMemo = _detail.Store.StoreMemo,
+                StoreStatus = _detail.Store.StoreStatus
+            };
+
+            SetAddressText();
+            SetPrimaryAssignmentInfo();
+            SetContractCountSummary();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"매장 상세 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private void SetContractCountSummary()
+    {
+        if (_detail.Contracts == null || _detail.Contracts.Count == 0)
+        {
+            _contractPccamCount = 0;
+            _contractViewerCount = 0;
+            return;
+        }
+
+        // 실제 Contract DTO의 필드명에 맞춰 수정 필요
+        _contractPccamCount = _detail.Contracts.Sum(x => x.PccamCount);
+        _contractViewerCount = _detail.Contracts.Sum(x => x.ViewerCount);
+    }
+
+    private void SetAddressText()
+    {
+        var address1 = _request.StoreAddress1?.Trim();
+        var address2 = _request.StoreAddress2?.Trim();
+
+        _addressText = string.Join(" ",
+            new[] { address1, address2 }
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+
+    private async Task SaveStoreAsync()
+    {
+        _message = null;
+
+        if (string.IsNullOrWhiteSpace(_request.StoreName))
+        {
+            SetWarning("매장명을 입력하세요.");
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            _request.StoreCode = StoreCode;
+
+            // 팝업에서는 주소를 한 줄로 관리
+            _request.StoreAddress1 = _addressText;
+            _request.StoreAddress2 = null;
+
+            // 기존 우편번호 값을 유지하고 싶으면 이 줄은 빼세요.
+            // 팝업 정책상 우편번호를 사용하지 않을 경우만 null 처리합니다.
+            _request.StoreZipcode = null;
+
+            var result = await ApiClient.PostAsync<StoreSaveRequest, ApiResponse<StoreSaveResponse>>(
+                "/api/manage/stores/save",
+                _request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _storeId = result.Data.StoreId;
+
+            SetSuccess("매장 정보가 수정되었습니다.");
+
+            await LoadDetailAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"매장 저장 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+    /// <summary>
+	/// 담당자 정보는 대표 담당자가 있으면 그 정보를 우선 사용하고, 없으면 첫 번째 담당자 정보를 사용하도록 합니다.
+    /// </summary>
+    private void SetPrimaryAssignmentInfo()
+    {
+        _primaryPartnerName = "";
+        _primaryUserName = "";
+        _primaryUserCell = "";
+
+        if (_detail.Assignments == null || _detail.Assignments.Count == 0)
+        {
+            return;
+        }
+
+        // 대표 담당자가 있으면 우선 사용
+        var primary = _detail.Assignments
+            .FirstOrDefault(x => x.IsPrimary);
+
+        // 대표 담당자가 없으면 첫 번째 담당자 사용
+        primary ??= _detail.Assignments.FirstOrDefault();
+
+        if (primary == null)
+        {
+            return;
+        }
+
+        // 실제 DTO 속성명에 맞게 수정 필요할 수 있음
+        _primaryPartnerName = primary.PartnerName ?? "";
+        _primaryUserName = primary.UserName ?? "";
+        _primaryUserCell = primary.UserCell ?? "";
+    }
+
+
+    private string GetTabClass(string tab)
+    {
+        return _activeTab == tab
+            ? "nav-link active"
+            : "nav-link";
+    }
+
+    private async Task ClosePopup()
+    {
+        await JS.InvokeVoidAsync("window.close");
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}
