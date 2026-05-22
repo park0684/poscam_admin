@@ -1,0 +1,642 @@
+﻿@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Settlement
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>@GetFormTitle()</strong>
+
+                @if (_isAdmin)
+                {
+                    <div class="d-flex gap-2">
+                        @if (_form.PppCode > 0 && !_isEditEnabled)
+                        {
+                            <button class="btn btn-sm btn-outline-primary"
+                                    @onclick="EnableEdit"
+                                    disabled="@_isSaving">
+                                수정
+                            </button>
+                        }
+
+                        <button class="btn btn-sm btn-outline-secondary"
+                                @onclick="ResetForm"
+                                disabled="@_isSaving">
+                            신규 등록
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="card-body">
+                @if (!string.IsNullOrWhiteSpace(_message))
+                {
+                    <div class="alert @MessageCss">
+                        @_message
+                    </div>
+                }
+
+                @if (!_isAdmin)
+                {
+                    <div class="alert alert-secondary">
+                        담당자 계정은 단가 정책을 조회할 수만 있습니다.
+                    </div>
+                }
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">
+                            PC캠 월 단가 <span class="text-danger">*</span>
+                        </label>
+
+                        <input class="form-control"
+                               type="number"
+                               min="0"
+                               @bind="_form.PccamPrice"
+                               readonly="@(!CanEditForm)" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">
+                            캠뷰어 월 단가 <span class="text-danger">*</span>
+                        </label>
+
+                        <input class="form-control"
+                               type="number"
+                               min="0"
+                               @bind="_form.ViewerPrice"
+                               readonly="@(!CanEditForm)" />
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">
+                            적용 시작월 <span class="text-danger">*</span>
+                        </label>
+
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    @onclick="DecreaseStartMonth"
+                                    disabled="@(!CanEditForm)">
+                                -
+                            </button>
+
+                            <input class="form-control text-center"
+                                   type="text"
+                                   inputmode="numeric"
+                                   placeholder="예: 202605"
+                                   @bind="_form.StartMonth"
+                                   readonly="@(!CanEditForm)" />
+
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    @onclick="IncreaseStartMonth"
+                                    disabled="@(!CanEditForm)">
+                                +
+                            </button>
+                        </div>
+
+                        <small class="text-muted">
+                            202612 다음은 202701로 월 단위 증가됩니다.
+                        </small>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">적용 종료월</label>
+
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    @onclick="DecreaseEndMonth"
+                                    disabled="@(!CanEditForm)">
+                                -
+                            </button>
+
+                            <input class="form-control text-center"
+                                   type="text"
+                                   inputmode="numeric"
+                                   placeholder="없으면 비움"
+                                   @bind="_endMonthText"
+                                   readonly="@(!CanEditForm)" />
+
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    @onclick="IncreaseEndMonth"
+                                    disabled="@(!CanEditForm)">
+                                +
+                            </button>
+                        </div>
+
+                        <small class="text-muted">
+                            비워두면 종료월 없이 계속 적용됩니다.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">상태</label>
+
+                    <select class="form-select"
+                            @bind="_form.Status"
+                            disabled="@(!CanEditForm || _isSaving)">
+                        <option value="1">사용</option>
+                        <option value="0">미사용</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">메모</label>
+
+                    <textarea class="form-control"
+                              rows="3"
+                              @bind="_form.Memo"
+                              readonly="@(!CanEditForm)"></textarea>
+                </div>
+
+                @if (_isAdmin)
+                {
+                    <div class="d-flex justify-content-end gap-2">
+                        <button class="btn btn-outline-secondary"
+                                @onclick="ResetForm"
+                                disabled="@_isSaving">
+                            초기화
+                        </button>
+
+                        <button class="btn btn-primary"
+                                @onclick="SavePolicyAsync"
+                                disabled="@(_isSaving || !CanEditForm)">
+                            @(_isSaving ? "저장 중..." : "저장")
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        @if (_isLoading)
+        {
+            <div class="alert alert-info">
+                단가 정책을 불러오는 중입니다.
+            </div>
+        }
+        else if (_policies.Count == 0)
+        {
+            <div class="alert alert-secondary">
+                등록된 단가 정책이 없습니다.
+            </div>
+        }
+        else
+        {
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>단가 정책 목록</strong>
+                    <small class="text-muted">총 @_policies.Count.ToString("N0")건</small>
+                </div>
+
+                <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+                    <table class="table table-hover table-striped align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th class="text-end">PC캠 단가</th>
+                                <th class="text-end">캠뷰어 단가</th>
+                                <th>적용 시작</th>
+                                <th>적용 종료</th>
+                                <th>상태</th>
+                                <th>메모</th>
+                                <th class="text-end"></th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @foreach (var item in _policies)
+                            {
+                                <tr>
+                                    <td class="text-end">@FormatMoney(item.PppPccamPrice)</td>
+                                    <td class="text-end">@FormatMoney(item.PppViewerPrice)</td>
+                                    <td>@FormatMonth(item.PppStartMonth)</td>
+                                    <td>@(item.PppEndMonth == null ? "-" : FormatMonth(item.PppEndMonth.Value))</td>
+                                    <td>
+                                        <span class="@GetStatusBadge(item.PppStatus)">
+                                            @GetStatusName(item.PppStatus)
+                                        </span>
+                                    </td>
+                                    <td>@(item.PppMemo ?? "-")</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                @onclick="() => SelectPolicy(item)">
+                                            선택
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int PartnerCode { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _isAdmin;
+    private bool _isSuccessMessage;
+
+    // 기존 단가 정책을 선택했을 때 바로 수정되지 않도록 제어하는 플래그입니다.
+    // 관리자가 목록에서 정책을 선택하면 false가 되고, "수정" 버튼을 눌러야 true가 됩니다.
+    private bool _isEditEnabled;
+
+    private string? _message;
+    private string? _endMonthText;
+
+    private string MessageCss => _isSuccessMessage
+        ? "alert-success"
+        : "alert-warning";
+
+    // PppCode가 있으면 기존 단가 정책입니다.
+    // 기존 정책은 선택 직후 읽기 전용으로 표시합니다.
+    private bool IsExistingPolicy => _form.PppCode > 0;
+
+    // 담당자 계정은 항상 false입니다.
+    // 관리자 계정이라도 기존 정책을 선택한 상태에서는 수정 버튼을 눌러야 true가 됩니다.
+    private bool CanEditForm => _isAdmin && (!IsExistingPolicy || _isEditEnabled);
+
+    private PartnerPricePolicySaveRequest _form = new()
+    {
+        Status = 1
+    };
+
+    private List<PartnerPricePolicyDto> _policies = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // 로그인 사용자의 권한을 확인합니다.
+        // 관리자: 등록/수정 가능
+        // 담당자: 조회만 가능
+        var role = await AuthStateService.GetUserRoleAsync();
+        _isAdmin = role == 1;
+
+        // 팝업은 특정 파트너사 전용이므로 PartnerCode를 초기값에 고정합니다.
+        ResetForm();
+
+        await LoadPoliciesAsync();
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// 현재 파트너사의 단가 정책 목록을 조회합니다.
+    /// 파트너사는 사용자가 선택하지 않고, 팝업 URL에서 받은 PartnerCode로 고정합니다.
+    /// </summary>
+    private async Task LoadPoliciesAsync()
+    {
+        _message = null;
+
+        if (PartnerCode <= 0)
+        {
+            SetWarning("파트너사 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        try
+        {
+            var url = $"/api/manage/settlements/price-policies?partnerCode={PartnerCode}";
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerPricePolicyDto>>>(url);
+
+            if (result == null)
+            {
+                SetWarning("단가 정책 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _policies = result.Data ?? new List<PartnerPricePolicyDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"단가 정책 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 단가 정책을 저장합니다.
+    /// 저장은 관리자만 가능합니다.
+    /// 담당자 계정은 화면에서 입력/저장 버튼이 비활성화되고, 이 메서드에서도 다시 차단합니다.
+    /// </summary>
+    private async Task SavePolicyAsync()
+    {
+        _message = null;
+
+        if (!_isAdmin)
+        {
+            SetWarning("단가 정책 저장은 관리자만 가능합니다.");
+            return;
+        }
+
+        if (PartnerCode <= 0)
+        {
+            SetWarning("파트너사 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        if (_form.PccamPrice < 0 || _form.ViewerPrice < 0)
+        {
+            SetWarning("단가는 0원 이상이어야 합니다.");
+            return;
+        }
+
+        if (!TryParseMonth(_form.StartMonth))
+        {
+            SetWarning("적용 시작월을 올바르게 입력하세요. 예: 202605");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_endMonthText))
+        {
+            if (!int.TryParse(_endMonthText, out var endMonth) || !TryParseMonth(endMonth))
+            {
+                SetWarning("적용 종료월을 올바르게 입력하세요. 예: 202605");
+                return;
+            }
+
+            if (endMonth < _form.StartMonth)
+            {
+                SetWarning("적용 종료월은 시작월보다 빠를 수 없습니다.");
+                return;
+            }
+
+            _form.EndMonth = endMonth;
+        }
+        else
+        {
+            _form.EndMonth = null;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            // 다른 파트너사의 정책으로 저장되지 않도록, 저장 직전에 PartnerCode를 강제합니다.
+            _form.PartnerCode = PartnerCode;
+
+            var result = await ApiClient.PostAsync<PartnerPricePolicySaveRequest, ApiResponse<PartnerPricePolicySaveResponse>>(
+                "/api/manage/settlements/price-policies",
+                _form);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(result.Message);
+
+            ResetForm();
+
+            await LoadPoliciesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"단가 정책 저장 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// 목록에서 단가 정책을 선택합니다.
+    /// 선택 직후에는 읽기 전용입니다.
+    /// 관리자는 "수정" 버튼을 눌러야 입력 필드가 활성화됩니다.
+    /// 담당자는 선택해도 계속 읽기 전용입니다.
+    /// </summary>
+    private void SelectPolicy(PartnerPricePolicyDto item)
+    {
+        _form = new PartnerPricePolicySaveRequest
+        {
+            PppCode = item.PppCode,
+            PartnerCode = PartnerCode,
+            PccamPrice = item.PppPccamPrice,
+            ViewerPrice = item.PppViewerPrice,
+            StartMonth = item.PppStartMonth,
+            EndMonth = item.PppEndMonth,
+            Status = item.PppStatus,
+            Memo = item.PppMemo
+        };
+
+        _endMonthText = item.PppEndMonth?.ToString();
+
+        // 기존 정책 선택 직후에는 수정 불가 상태입니다.
+        _isEditEnabled = false;
+
+        _message = null;
+    }
+
+    /// <summary>
+    /// 기존 단가 정책의 수정 모드를 활성화합니다.
+    /// 관리자만 사용할 수 있습니다.
+    /// </summary>
+    private void EnableEdit()
+    {
+        if (!_isAdmin)
+        {
+            SetWarning("단가 정책 수정은 관리자만 가능합니다.");
+            return;
+        }
+
+        if (_form.PppCode <= 0)
+        {
+            SetWarning("수정할 단가 정책을 먼저 선택하세요.");
+            return;
+        }
+
+        _isEditEnabled = true;
+    }
+
+    /// <summary>
+    /// 단가 정책 입력 폼을 신규 등록 상태로 초기화합니다.
+    /// 팝업은 특정 파트너사 전용이므로 PartnerCode를 0으로 만들지 않습니다.
+    /// </summary>
+    private void ResetForm()
+    {
+        _form = new PartnerPricePolicySaveRequest
+        {
+            PppCode = 0,
+            PartnerCode = PartnerCode,
+            PccamPrice = 0,
+            ViewerPrice = 0,
+            StartMonth = GetCurrentMonth(),
+            EndMonth = null,
+            Status = 1,
+            Memo = null
+        };
+
+        _endMonthText = null;
+
+        // 신규 등록 상태에서는 관리자가 바로 입력할 수 있어야 합니다.
+        // 담당자는 CanEditForm의 _isAdmin 조건 때문에 여전히 입력할 수 없습니다.
+        _isEditEnabled = true;
+    }
+
+    private void IncreaseStartMonth()
+    {
+        _form.StartMonth = AddMonth(_form.StartMonth, 1);
+    }
+
+    private void DecreaseStartMonth()
+    {
+        _form.StartMonth = AddMonth(_form.StartMonth, -1);
+    }
+
+    private void IncreaseEndMonth()
+    {
+        var baseMonth = TryGetEndMonthOrDefault();
+        _endMonthText = AddMonth(baseMonth, 1).ToString();
+    }
+
+    private void DecreaseEndMonth()
+    {
+        var baseMonth = TryGetEndMonthOrDefault();
+        _endMonthText = AddMonth(baseMonth, -1).ToString();
+    }
+
+    /// <summary>
+    /// 종료월 입력값이 정상적인 월이면 그 값을 사용합니다.
+    /// 비어 있거나 잘못된 값이면 시작월을 기준으로 증감합니다.
+    /// </summary>
+    private int TryGetEndMonthOrDefault()
+    {
+        if (!string.IsNullOrWhiteSpace(_endMonthText)
+            && int.TryParse(_endMonthText, out var endMonth)
+            && TryParseMonth(endMonth))
+        {
+            return endMonth;
+        }
+
+        return _form.StartMonth;
+    }
+
+    /// <summary>
+    /// yyyymm 숫자에 월 단위 증감을 적용합니다.
+    /// 202612에 +1을 하면 202701이 됩니다.
+    /// 202601에 -1을 하면 202512가 됩니다.
+    /// </summary>
+    private static int AddMonth(int yyyymm, int monthOffset)
+    {
+        var year = yyyymm / 100;
+        var month = yyyymm % 100;
+
+        if (year < 2000 || year > 2099 || month < 1 || month > 12)
+        {
+            return GetCurrentMonth();
+        }
+
+        var date = new DateTime(year, month, 1);
+        var changed = date.AddMonths(monthOffset);
+
+        return changed.Year * 100 + changed.Month;
+    }
+
+    private static int GetCurrentMonth()
+    {
+        var now = DateTime.Now;
+        return now.Year * 100 + now.Month;
+    }
+
+    private static bool TryParseMonth(int value)
+    {
+        var year = value / 100;
+        var month = value % 100;
+
+        return year is >= 2000 and <= 2099
+               && month is >= 1 and <= 12;
+    }
+
+    private static string FormatMonth(int value)
+    {
+        var year = value / 100;
+        var month = value % 100;
+
+        return $"{year}-{month:00}";
+    }
+
+    private static string FormatMoney(int value)
+    {
+        return value.ToString("N0") + "원";
+    }
+
+    private static string GetStatusName(int status)
+    {
+        return status switch
+        {
+            1 => "사용",
+            0 => "미사용",
+            _ => $"기타({status})"
+        };
+    }
+
+    private static string GetStatusBadge(int status)
+    {
+        return status switch
+        {
+            1 => "badge bg-success",
+            0 => "badge bg-secondary",
+            _ => "badge bg-light text-dark"
+        };
+    }
+
+    private string GetFormTitle()
+    {
+        if (_form.PppCode <= 0)
+        {
+            return "단가 정책 등록";
+        }
+
+        return _isEditEnabled
+            ? "단가 정책 수정"
+            : "단가 정책 상세";
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}

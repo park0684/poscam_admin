@@ -1,0 +1,537 @@
+﻿@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.License
+@using poscam.AdminWeb.Models.Store
+
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header">
+        <strong>라이선스 / 인증정보</strong>
+    </div>
+
+    <div class="card-body">
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @MessageCss">
+                @_message
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="alert alert-info">
+                라이선스 정보를 불러오는 중입니다.
+            </div>
+        }
+        else
+        {
+            @if (_contracts.Count == 0)
+            {
+                <div class="alert alert-secondary">
+                    등록된 계약이 없습니다. 계약을 먼저 등록해야 라이선스를 발급할 수 있습니다.
+                </div>
+            }
+            else if (_canIssueLicense)
+            {
+                <div class="border rounded p-3 mb-3 bg-light">
+                    <h6 class="mb-3">PC캠 라이선스 발급</h6>
+
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">계약 선택</label>
+                            <select class="form-select" @bind="_selectedContractCode">
+                                @foreach (var contract in _contracts)
+                                {
+                                    <option value="@contract.ContractCode">
+                                        @contract.ContractNo / @GetContractTypeName(contract.ContractType)
+                                        / PC캠 @contract.PccamCount
+                                    </option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">발급 수량</label>
+                            <input class="form-control"
+                                   type="number"
+                                   min="1"
+                                   @bind="_issueRequest.Count" />
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary"
+                                @onclick="IssueLicensesAsync"
+                                disabled="@_isIssuing">
+                            @(_isIssuing ? "발급 중..." : "라이선스 발급")
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-secondary">
+                    라이선스 발급 권한이 없습니다.
+                </div>
+            }
+
+            <h6 class="mb-2">발급된 라이선스</h6>
+
+            @if (_licenses.Count == 0)
+            {
+                <div class="text-muted">
+                    발급된 라이선스가 없습니다.
+                </div>
+            }
+            else
+            {
+                <div style="@GetLicenseTableStyle()">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>계약번호</th>
+                                <th>라이선스 키</th>
+                                <th>상태</th>
+                                <th>POS</th>
+                                <th>등록 장비</th>
+                                <th>등록일</th>
+                                <th>처리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var license in _licenses)
+                            {
+                                <tr>
+                                    <td>@license.ContractNo</td>
+
+                                    <td>
+                                        <code>@license.LicenseKey</code>
+                                    </td>
+
+                                    <td>@GetLicenseStatusName(license.LicenseStatus)</td>
+
+                                    <td>@(license.PosNo?.ToString() ?? "-")</td>
+
+                                    <td>@(license.RegisteredHwidMasked ?? "-")</td>
+
+                                    <td>@license.RegisteredAt.ToString("yyyy-MM-dd HH:mm")</td>
+
+                                    <td>
+                                        @if (license.LicenseStatus == 9)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success"
+                                                    @onclick="() => RestoreLicenseAsync(license)"
+                                                    disabled="@(_processingLicenseCode == license.LicenseCode)">
+                                                @(_processingLicenseCode == license.LicenseCode ? "처리 중..." : "복구")
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => RevokeLicenseAsync(license)"
+                                                    disabled="@(_processingLicenseCode == license.LicenseCode)">
+                                                @(_processingLicenseCode == license.LicenseCode ? "처리 중..." : "폐기")
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+				</div>
+            }
+
+            @if (_lastIssuedKeys.Count > 0)
+            {
+                <div class="border rounded p-3 mt-3">
+                    <h6>이번에 발급된 라이선스</h6>
+
+                    <ul class="mb-0">
+                        @foreach (var key in _lastIssuedKeys)
+                        {
+                            <li><code>@key</code></li>
+                        }
+                    </ul>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int StoreCode { get; set; }
+    
+    [Parameter]
+    public bool HideLicenseKey { get; set; }
+
+    [Parameter]
+    public int MaxVisibleRows { get; set; } = 10;
+
+    private bool _isLoading = true;
+
+    private bool _isIssuing;
+
+    private bool _isSuccessMessage;
+
+    private bool _canIssueLicense;
+    /// <summary>
+    /// 현재 폐기 처리 중인 라이선스 코드.
+    /// 특정 행의 버튼만 비활성화하기 위해 사용한다.
+    /// </summary>
+    private int? _processingLicenseCode;
+	private int? _revokingLicenseCode;
+
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private int _selectedContractCode;
+
+    private LicenseIssueManageRequest _issueRequest = new();
+
+    private List<StoreContractDto> _contracts = new();
+
+    private List<StoreLicenseDto> _licenses = new();
+
+    private List<string> _lastIssuedKeys = new();
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var userRole = await AuthStateService.GetUserRoleAsync();
+
+        // 관리자 또는 담당자는 라이선스 발급 가능.
+        // 실제 매장 권한 검증은 백엔드 LicenseManageService에서 수행한다.
+        _canIssueLicense = userRole == 1 || userRole == 2;
+
+        await LoadContractsAsync();
+        await LoadLicensesAsync();
+
+        if (_contracts.Count > 0 && _selectedContractCode <= 0)
+        {
+            _selectedContractCode = _contracts[0].ContractCode;
+        }
+
+        _isLoading = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadContractsAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<StoreContractDto>>>(
+                $"/api/manage/stores/{StoreCode}/contracts");
+
+            if (result == null)
+            {
+                SetWarning("계약 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _contracts = result.Data ?? new List<StoreContractDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"계약 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadLicensesAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<StoreLicenseDto>>>(
+                $"/api/manage/stores/{StoreCode}/licenses");
+
+            if (result == null)
+            {
+                SetWarning("라이선스 목록 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _licenses = result.Data ?? new List<StoreLicenseDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"라이선스 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task IssueLicensesAsync()
+    {
+        _message = null;
+        _lastIssuedKeys.Clear();
+
+        if (!_canIssueLicense)
+        {
+            SetWarning("라이선스 발급 권한이 없습니다.");
+            return;
+        }
+
+        if (_selectedContractCode <= 0)
+        {
+            SetWarning("라이선스를 발급할 계약을 선택하세요.");
+            return;
+        }
+
+        if (_issueRequest.Count <= 0)
+        {
+            SetWarning("발급 수량은 1개 이상이어야 합니다.");
+            return;
+        }
+
+        _isIssuing = true;
+
+        try
+        {
+            var result = await ApiClient.PostAsync<LicenseIssueManageRequest, ApiResponse<LicenseIssueResponse>>(
+                $"/api/manage/contracts/{_selectedContractCode}/licenses/issue",
+                _issueRequest);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            _lastIssuedKeys = result.Data.LicenseKeys ?? new List<string>();
+
+            SetSuccess($"{_lastIssuedKeys.Count}개의 라이선스가 발급되었습니다.");
+
+            _issueRequest = new LicenseIssueManageRequest
+            {
+                Count = 1
+            };
+
+            await LoadLicensesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"라이선스 발급 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isIssuing = false;
+        }
+    }
+    /// <summary>
+    /// 선택한 인증키를 폐기 처리한다.
+    ///
+    /// 폐기 API 호출 후 목록을 다시 조회하여
+    /// 상태를 즉시 화면에 반영한다.
+    /// </summary>
+    private async Task RevokeLicenseAsync(StoreLicenseDto license)
+    {
+        _message = null;
+
+        if (!_canIssueLicense)
+        {
+            SetWarning("인증키 폐기 권한이 없습니다.");
+            return;
+        }
+
+        if (license.LicenseCode <= 0)
+        {
+            SetWarning("폐기할 라이선스 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        if (license.LicenseStatus == 9)
+        {
+            SetWarning("이미 폐기된 인증키입니다.");
+            return;
+        }
+
+        _revokingLicenseCode = null;
+
+        try
+        {
+            var request = new LicenseRevokeManageRequest
+            {
+                Reason = "관리자 화면에서 인증키 폐기"
+            };
+
+            var result = await ApiClient.PostAsync<
+                LicenseRevokeManageRequest,
+                ApiResponse<LicenseRevokeResponse>>(
+                    $"/api/manage/licenses/{license.LicenseCode}/revoke",
+                    request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess("인증키가 폐기되었습니다.");
+
+            await LoadLicensesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"인증키 폐기 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _revokingLicenseCode = null;
+        }
+    }
+
+    /// <summary>
+    /// 폐기된 인증키를 복구한다.
+    /// 연결 장비가 있으면 사용중, 없으면 초기화 상태로 복구된다.
+    /// </summary>
+    private async Task RestoreLicenseAsync(StoreLicenseDto license)
+    {
+        _message = null;
+
+        if (!_canIssueLicense)
+        {
+            SetWarning("인증키 복구 권한이 없습니다.");
+            return;
+        }
+
+        if (license.LicenseCode <= 0)
+        {
+            SetWarning("복구할 라이선스 코드가 올바르지 않습니다.");
+            return;
+        }
+
+        if (license.LicenseStatus != 9)
+        {
+            SetWarning("폐기 상태의 인증키만 복구할 수 있습니다.");
+            return;
+        }
+
+        _processingLicenseCode = null;
+
+        try
+        {
+            var request = new LicenseRestoreManageRequest
+            {
+                Reason = "관리자 화면에서 인증키 복구"
+            };
+
+            var result = await ApiClient.PostAsync<
+                LicenseRestoreManageRequest,
+                ApiResponse<LicenseRestoreResponse>>(
+                    $"/api/manage/licenses/{license.LicenseCode}/restore",
+                    request);
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+                return;
+            }
+
+            SetSuccess(result.Message);
+
+            await LoadLicensesAsync();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"인증키 복구 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _processingLicenseCode = null;
+        }
+    }
+    private string GetContractTypeName(int type)
+    {
+        return type switch
+        {
+            1 => "테스트형",
+            2 => "구매형",
+            3 => "구독형",
+            _ => $"기타({type})"
+        };
+    }
+
+    private string GetLicenseStatusName(int status)
+    {
+        return status switch
+        {
+            0 => "미사용",
+            1 => "사용중",
+            2 => "초기화",
+            9 => "폐기",
+            _ => $"기타({status})"
+        };
+    }
+    private string GetLicenseTableStyle()
+    {
+        if (_licenses == null || _licenses.Count <= MaxVisibleRows)
+        {
+            return "";
+        }
+
+        return "max-height: 360px; overflow-y: auto;";
+    }
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+    
+}

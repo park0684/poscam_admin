@@ -1,0 +1,166 @@
+﻿@using poscam.AdminWeb.Models.Navigation
+@using poscam.AdminWeb.Services
+@inject NavigationManager NavigationManager
+@inject AuthStateService AuthStateService
+
+<div class="nav-scrollable poscam-side-menu">
+
+    <nav class="flex-column poscam-menu">
+        @foreach (var menu in _menus)
+        {
+            if (menu.HasChildren)
+            {
+                <div class="nav-item px-3">
+                    <details class="poscam-menu-group"
+                             name="main-side-menu"
+                             open="@IsMenuOpen(menu)">
+                        <summary class="nav-link poscam-menu-parent">
+                            @menu.Title
+                        </summary>
+
+                        <div class="poscam-sub-menu">
+                            @foreach (var child in menu.Children.OrderBy(x => x.Order))
+                            {
+                                <NavLink class="nav-link poscam-sub-link"
+                                         href="@child.Url"
+                                         Match="NavLinkMatch.Prefix">
+                                    @child.Title
+                                </NavLink>
+                            }
+                        </div>
+                    </details>
+                </div>
+            }
+            else
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link poscam-menu-link"
+                             href="@menu.Url"
+                             Match="NavLinkMatch.All">
+                        @menu.Title
+                    </NavLink>
+                </div>
+            }
+        }
+    </nav>
+
+    <div class="poscam-logout-area px-3">
+        <button type="button"
+                class="btn poscam-logout-button w-100"
+                @onclick="LogoutAsync">
+            로그아웃
+        </button>
+    </div>
+</div>
+<style>
+    /* 전체 사이드 메뉴 영역 */
+    .poscam-side-layout {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* 실제 메뉴 목록 영역 */
+    .poscam-menu-scroll {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+
+    .poscam-menu {
+        padding-top: 0.75rem;
+    }
+
+        .poscam-menu .nav-item {
+            padding-bottom: 0.25rem;
+        }
+
+    .poscam-menu-link,
+    .poscam-menu-parent,
+    .poscam-sub-link {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .poscam-menu-parent {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+        .poscam-menu-parent::marker {
+            content: "";
+        }
+
+        .poscam-menu-parent::after {
+            content: "▸";
+            font-size: 0.85rem;
+        }
+
+    .poscam-menu-group[open] > .poscam-menu-parent::after {
+        content: "▾";
+    }
+
+    .poscam-sub-menu {
+        margin-left: 0.75rem;
+        padding-left: 0.75rem;
+        border-left: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .poscam-sub-link {
+        font-size: 0.92rem;
+        padding-top: 0.3rem;
+        padding-bottom: 0.3rem;
+        padding-left: 0.75rem !important;
+    }
+
+    /* 하단 로그아웃 영역 */
+    .poscam-logout-area {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 1rem;
+    }
+
+
+    .poscam-logout-button {
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 1);
+        background-color: transparent;
+    }
+
+        .poscam-logout-button:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+</style>
+
+@code {
+    private List<MenuItem> _menus = new();
+
+    protected override void OnInitialized()
+    {
+        _menus = MenuConfiguration.GetMenus()
+            .OrderBy(x => x.Order)
+            .ToList();
+    }
+
+    private bool IsMenuOpen(MenuItem menu)
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+
+        return menu.Children.Any(child =>
+            !string.IsNullOrWhiteSpace(child.Url) &&
+            relativePath.StartsWith(child.Url, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task LogoutAsync()
+    {
+        // 저장된 로그인 상태 제거
+        await AuthStateService.ClearAsync();
+
+        // 로그인 페이지로 이동
+        NavigationManager.NavigateTo("/login", forceLoad: true, replace: true);
+    }
+}

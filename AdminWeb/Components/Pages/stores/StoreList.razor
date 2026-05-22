@@ -1,0 +1,165 @@
+﻿@page "/stores"
+@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Store
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<PageTitle>매장 목록</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">매장 목록</h3>
+            <small class="text-muted">관리자 또는 담당자 권한에 따라 조회 가능한 매장만 표시됩니다.</small>
+        </div>
+
+        <button class="btn btn-primary" @onclick="CreateStore">
+            신규 매장 등록
+        </button>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="alert alert-info">
+            매장 목록을 불러오는 중입니다.
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert alert-warning">
+            @_message
+        </div>
+    }
+    else if (_stores.Count == 0)
+    {
+        <div class="alert alert-secondary">
+            조회된 매장이 없습니다.
+        </div>
+    }
+    else
+    {
+        <table class="table table-striped table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>매장코드</th>
+                    <th>매장ID</th>
+                    <th>매장명</th>
+                    <th>사업자번호</th>
+                    <th>대표자</th>
+                    <th>연락처</th>
+                    <th>담당 파트너</th>
+                    <th>담당자</th>
+                    <th>계약</th>
+                    <th>PC캠</th>
+                    <th>캠뷰어</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var store in _stores)
+                {
+                    <tr>
+                        <td>@store.StoreCode</td>
+                        <td>@store.StoreId</td>
+                        <td>@store.StoreName</td>
+                        <td>@store.StoreBizNum</td>
+                        <td>@store.StoreOwnerName</td>
+                        <td>@store.StoreTel</td>
+                        <td>@store.PrimaryPartnerName</td>
+                        <td>@store.PrimaryUserName</td>
+                        <td>@store.ContractCount</td>
+                        <td>@store.PccamDeviceCount</td>
+                        <td>@store.ViewerDeviceCount</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => OpenStorePopupAsync(store.StoreCode)">
+                                상세
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+
+    private string? _message;
+
+    private List<StoreListItemDto> _stores = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await LoadStoresAsync();
+
+        _isLoading = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadStoresAsync()
+    {
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<List<StoreListItemDto>>>(
+                "/api/manage/stores");
+
+            if (result == null)
+            {
+                _message = "서버 응답을 받을 수 없습니다.";
+                return;
+            }
+
+            if (!result.Success)
+            {
+                _message = result.Message;
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _stores = result.Data ?? new List<StoreListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            _message = $"매장 목록 조회 중 오류가 발생했습니다. {ex.Message}";
+        }
+    }
+    /// <summary>
+    /// 매장 상세 팝업을 연다.
+    ///
+    /// popup.js의 poscamPopup.openStoreDetail(storeCode)를 호출한다.
+    /// 실제 팝업 URL은 /stores/popup/{storeCode} 형식으로 열린다.
+    /// </summary>
+    private async Task OpenStorePopupAsync(int storeCode)
+    {
+        if (storeCode <= 0)
+        {
+            return;
+        }
+        await JS.InvokeVoidAsync("poscamPopup.openStoreDetail", storeCode);
+    }
+    private void OpenDetail(int storeCode)
+    {
+        NavigationManager.NavigateTo($"/stores/{storeCode}");
+    }
+
+    private void CreateStore()
+    {
+        NavigationManager.NavigateTo("/stores/new");
+    }
+}

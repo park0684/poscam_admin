@@ -1,0 +1,192 @@
+﻿@rendermode InteractiveServer
+
+@using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Store
+@inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject NavigationManager NavigationManager
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>@Title</strong>
+
+        <button class="btn btn-sm btn-outline-secondary" @onclick="LoadConfigAsync">
+            새로고침
+        </button>
+    </div>
+
+    <div class="card-body">
+        <div class="alert alert-secondary">
+            NVR 및 채널 설정은 현장 캠뷰어에서만 수정할 수 있습니다.
+            관리자 페이지에서는 서버에 동기화된 설정을 조회만 합니다.
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @MessageCss">
+                @_message
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="alert alert-info">
+                NVR 설정 정보를 불러오는 중입니다.
+            </div>
+        }
+        else
+        {
+            @if (_config == null)
+            {
+                <div class="text-muted">
+                    설정 정보를 조회하지 못했습니다.
+                </div>
+            }
+            else
+            {
+                <h6 class="mb-2">NVR 설정</h6>
+
+                @if (_config.NvrConfig == null)
+                {
+                    <div class="text-muted mb-3">
+                        등록된 NVR 설정이 없습니다.
+                    </div>
+                }
+                else
+                {
+                    <dl class="row mb-3">
+                        <dt class="col-4">NVR ID</dt>
+                        <dd class="col-8">@_config.NvrConfig.NvrId</dd>
+
+                        <dt class="col-4">비밀번호</dt>
+                        <dd class="col-8">
+                            @(_config.NvrConfig.HasPassword ? "저장됨" : "없음")
+                        </dd>
+
+                        <dt class="col-4">NVR IP</dt>
+                        <dd class="col-8">@_config.NvrConfig.NvrIp</dd>
+
+                        <dt class="col-4">NVR Port</dt>
+                        <dd class="col-8">@_config.NvrConfig.NvrPort</dd>
+
+                        <dt class="col-4">채널 수</dt>
+                        <dd class="col-8">@_config.NvrConfig.NvrChannels</dd>
+
+                        <dt class="col-4">설정 버전</dt>
+                        <dd class="col-8">@(_config.NvrConfig.NvrVersion ?? "-")</dd>
+                    </dl>
+                }
+
+                <h6 class="mb-2">채널 매핑</h6>
+
+                @if (_config.Channels.Count == 0)
+                {
+                    <div class="text-muted">
+                        등록된 채널 매핑이 없습니다.
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>POS 번호</th>
+                                <th>NVR 채널 번호</th>
+                                <th>화면 번호</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var channel in _config.Channels)
+                            {
+                                <tr>
+                                    <td>@channel.PosNo</td>
+                                    <td>@channel.ChannelNo</td>
+                                    <td>@channel.Screen</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int StoreCode { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "NVR / 채널 설정";
+
+    private bool _isLoading = true;
+
+    private bool _isSuccessMessage;
+
+    private string? _message;
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+
+    private ManageConfigResponse? _config;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await LoadConfigAsync();
+
+        _isLoading = false;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadConfigAsync()
+    {
+        _message = null;
+
+        try
+        {
+            var result = await ApiClient.GetAsync<ApiResponse<ManageConfigResponse>>(
+                $"/api/manage/stores/{StoreCode}/config");
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success || result.Data == null)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+
+                return;
+            }
+
+            _config = result.Data;
+            SetSuccess("NVR 설정 정보를 조회했습니다.");
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"NVR 설정 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
+    }
+}
