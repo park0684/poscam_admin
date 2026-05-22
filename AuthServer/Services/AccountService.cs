@@ -451,8 +451,8 @@ public class AccountService
         }
 
         if (user.UserRole != (int)UserRole.System &&
-            user.UserRole != (int)UserRole.Admin &&
-            user.UserRole != (int)UserRole.PartnerUser)
+    user.UserRole != (int)UserRole.Admin &&
+    user.UserRole != (int)UserRole.PartnerUser)
         {
             return ApiResponse<UserAccount>.Fail(
                 AuthErrorCode.InvalidLogin,

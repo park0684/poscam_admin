@@ -162,8 +162,8 @@ public class UserManageController : ControllerBase
     [HttpPut("{userCode:int}")]
     [ProducesResponseType(typeof(ApiResponse<UserSaveResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<UserSaveResponse>>> UpdateUser(
-    int userCode,
-    [FromBody] UserUpdateRequest request)
+        int userCode,
+        [FromBody] UserUpdateRequest request)
     {
         var loginUserResult = await GetLoginUserAsync();
 
