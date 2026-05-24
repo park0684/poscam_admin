@@ -163,44 +163,93 @@
                     <!-- 우측: 담당자 정보 + 계약 수량 요약 -->
                     <div class="col-lg-4">
                         <div class="side-card-stack">
-                            <div class="card shadow-sm">
-                                <div class="card-header">
-                                    <strong>담당자 정보</strong>
+                            <div class="card shadow-sm mt-3">
+                                <div class="card-header fw-bold">
+                                    담당자 정보
                                 </div>
 
                                 <div class="card-body">
-                                    <div class="row mb-3 align-items-center">
-                                        <div class="col-4">
-                                            <label class="form-label mb-0">파트너</label>
-                                        </div>
-                                        <div class="col-8">
-                                            <input class="form-control form-control-sm"
-                                                   value="@_primaryPartnerName"
-                                                   readonly />
+                                    <!-- 1번째 줄: 파트너사 -->
+                                    <div class="row g-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label">담당 파트너사</label>
+
+                                            @if (IsCreateMode && _isAdmin)
+                                            {
+                                                <select class="form-select"
+                                                        value="@_selectedPartnerCode"
+                                                        @onchange="OnPartnerChanged">
+                                                    <option value="0">파트너사를 선택하세요</option>
+
+                                                    @foreach (var partner in _partners)
+                                                    {
+                                                        <option value="@partner.PartnerCode">
+                                                            @partner.PartnerName
+                                                        </option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input class="form-control"
+                                                       value="@Display(_primaryPartnerName)"
+                                                       readonly />
+                                            }
                                         </div>
                                     </div>
 
-                                    <div class="row mb-3 align-items-center">
-                                        <div class="col-4">
-                                            <label class="form-label mb-0">담당자</label>
+                                    <!-- 2번째 줄: 담당자 / 연락처 -->
+                                    <div class="row g-3 mt-1">
+                                        <div class="col-md-6">
+                                            <label class="form-label">담당자</label>
+
+                                            @if (IsCreateMode && _isAdmin)
+                                            {
+                                                <select class="form-select"
+                                                        @bind="_selectedUserCode"
+                                                        disabled="@(_selectedPartnerCode <= 0)">
+                                                    <option value="0">담당자를 선택하세요</option>
+
+                                                    @foreach (var user in _users)
+                                                    {
+                                                        <option value="@user.UserCode">
+                                                            @user.UserName
+                                                        </option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <input class="form-control"
+                                                       value="@Display(_primaryUserName)"
+                                                       readonly />
+                                            }
                                         </div>
-                                        <div class="col-8">
-                                            <input class="form-control form-control-sm"
-                                                   value="@_primaryUserName"
-                                                   readonly />
+
+                                        <div class="col-md-6">
+                                            <label class="form-label">담당자 연락처</label>
+
+                                            @if (IsCreateMode && _isAdmin)
+                                            {
+                                                <input class="form-control"
+                                                       value="@GetSelectedUserCell()"
+                                                       readonly />
+                                            }
+                                            else
+                                            {
+                                                <input class="form-control"
+                                                       value="@Display(_primaryUserCell)"
+                                                       readonly />
+                                            }
                                         </div>
                                     </div>
 
-                                    <div class="row align-items-center">
-                                        <div class="col-4">
-                                            <label class="form-label mb-0">연락처</label>
+                                    @if (IsCreateMode && _isPartnerUser)
+                                    {
+                                        <div class="text-muted small mt-2">
+                                            담당자 계정으로 등록하는 경우, 소속 파트너사와 현재 로그인한 담당자가 자동 지정됩니다.
                                         </div>
-                                        <div class="col-8">
-                                            <input class="form-control form-control-sm"
-                                                   value="@_primaryUserCell"
-                                                   readonly />
-                                        </div>
-                                    </div>
+                                    }
                                 </div>
                             </div>
 
@@ -526,7 +575,7 @@
             {
                 if (_isAdmin)
                 {
-                    if (_selectedPartnerCode <= 0)
+                    if (_selectedUserCode <= 0)
                     {
                         SetWarning("담당 파트너사를 선택하세요.");
                         return;
@@ -686,6 +735,12 @@
             _request.PrimaryPartnerCode = _loginPartnerCode.Value;
             _selectedPartnerCode = _loginPartnerCode.Value;
 
+            // 담당자 계정은 본인이 기본 담당자로 지정된다.
+            // 서버에서도 PrimaryManagerUserCode가 없으면 loginUser.UserCode를 사용한다.
+            _primaryPartnerName = "소속 파트너사";
+            _primaryUserName = "현재 로그인 담당자";
+            _primaryUserCell = "";
+
             await LoadUsersByPartnerAsync(_loginPartnerCode.Value);
 
             return;
@@ -693,7 +748,24 @@
 
         SetWarning("매장을 등록할 권한이 없습니다.");
     }
+    private string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
 
+    private string GetSelectedUserCell()
+    {
+        if (_selectedUserCode <= 0)
+        {
+            return "-";
+        }
+
+        var user = _users.FirstOrDefault(x => x.UserCode == _selectedUserCode);
+
+        return string.IsNullOrWhiteSpace(user?.UserCell)
+            ? "-"
+            : user.UserCell;
+    }
     /// <summary>
     /// 파트너사 선택 목록을 조회한다.
     ///

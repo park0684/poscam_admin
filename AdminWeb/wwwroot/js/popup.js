@@ -121,12 +121,4 @@
             popup.focus();
         }
     }
-    /**
-    * 팝업 부모창 새로고침
-    */
-    refreshOpener: function () {
-        if (window.opener && !window.opener.closed) {
-            window.opener.location.reload();
-        }
-    }
 };
