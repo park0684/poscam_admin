@@ -587,4 +587,268 @@ WHERE partner_code = @PartnerCode
 
         return result.ToList();
     }
+
+    /// <summary>
+    /// 관리자/System용 매장 목록 조회.
+    /// 전체 매장을 대상으로 검색 조건을 적용한다.
+    /// </summary>
+    public async Task<List<StoreListItemDto>> GetListForAdminAsync(
+        StoreListSearchRequest request)
+    {
+        return await GetListAsync(
+            request,
+            fixedPartnerCode: null);
+    }
+
+    /// <summary>
+    /// 파트너사 기준 매장 목록 검색 조건을 적용.
+    /// </summary>
+    /// <param name="partnerCode"></param>
+    /// <param name="request"></param>
+    /// <returns></returns>
+    public async Task<List<StoreListItemDto>> GetListForPartnerAsync(
+    int partnerCode,
+    StoreListSearchRequest request)
+    {
+        return await GetListAsync(
+            request,
+            fixedPartnerCode: partnerCode);
+    }
+
+    /// <summary>
+    /// 매장 목록 공통 조회.
+    /// 
+    /// assignedUserCode가 null이면 전체 매장 기준,
+    /// 값이 있으면 해당 담당자의 소속 파트너사 매장만 조회한다.
+    /// </summary>
+    private async Task<List<StoreListItemDto>> GetListAsync(
+    StoreListSearchRequest request,
+    int? fixedPartnerCode)
+    {
+        request ??= new StoreListSearchRequest();
+
+        var where = new List<string>();
+        var param = new DynamicParameters();
+
+        param.Add("AssignmentActive", (int)AssignmentStatus.Active);
+        param.Add("PccamAppType", (int)DeviceAppType.Pccam);
+        param.Add("ViewerAppType", (int)DeviceAppType.Viewer);
+
+        where.Add("1 = 1");
+
+        /*
+         * PartnerUser 조회인 경우:
+         * 로그인 사용자의 소속 partner_code를 fixedPartnerCode로 받는다.
+         * 이 값이 있으면 화면에서 전달된 partnerCode 검색조건보다 우선한다.
+         */
+        if (fixedPartnerCode != null)
+        {
+            where.Add(@"
+            EXISTS (
+                SELECT 1
+                FROM store_user_assignments fixed_partner_sua
+                WHERE fixed_partner_sua.store_code = s.store_code
+                  AND fixed_partner_sua.partner_code = @FixedPartnerCode
+                  AND fixed_partner_sua.status = @AssignmentActive
+            )");
+
+            param.Add("FixedPartnerCode", fixedPartnerCode.Value);
+        }
+        /*
+         * System/Admin 조회인 경우:
+         * 화면에서 선택한 담당파트너 필터를 적용한다.
+         */
+        else if (request.PartnerCode != null && request.PartnerCode > 0)
+        {
+            where.Add(@"
+            EXISTS (
+                SELECT 1
+                FROM store_user_assignments partner_sua
+                WHERE partner_sua.store_code = s.store_code
+                  AND partner_sua.partner_code = @PartnerCode
+                  AND partner_sua.status = @AssignmentActive
+            )");
+
+            param.Add("PartnerCode", request.PartnerCode.Value);
+        }
+
+        if (request.StoreStatus != null)
+        {
+            where.Add("s.store_status = @StoreStatus");
+            param.Add("StoreStatus", request.StoreStatus.Value);
+        }
+
+        if (request.RegisteredFrom != null)
+        {
+            where.Add("s.store_rdate >= @RegisteredFrom");
+            param.Add("RegisteredFrom", request.RegisteredFrom.Value.Date);
+        }
+
+        if (request.RegisteredTo != null)
+        {
+            where.Add("s.store_rdate < DATE_ADD(@RegisteredTo, INTERVAL 1 DAY)");
+            param.Add("RegisteredTo", request.RegisteredTo.Value.Date);
+        }
+
+        if (request.ContractFrom != null || request.ContractTo != null)
+        {
+            var contractWhere = new List<string>
+        {
+            "c.con_store = s.store_code"
+        };
+
+            if (request.ContractFrom != null)
+            {
+                contractWhere.Add("c.con_start >= @ContractFrom");
+                param.Add("ContractFrom", request.ContractFrom.Value.Date);
+            }
+
+            if (request.ContractTo != null)
+            {
+                contractWhere.Add("c.con_start < DATE_ADD(@ContractTo, INTERVAL 1 DAY)");
+                param.Add("ContractTo", request.ContractTo.Value.Date);
+            }
+
+            where.Add($@"
+            EXISTS (
+                SELECT 1
+                FROM contracts c
+                WHERE {string.Join(" AND ", contractWhere)}
+            )");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Keyword))
+        {
+            where.Add(@"
+            (
+                s.store_id LIKE @Keyword
+                OR s.store_name LIKE @Keyword
+            )");
+
+            param.Add("Keyword", $"%{request.Keyword.Trim()}%");
+        }
+
+        var sql = $@"
+        SELECT
+            s.store_code AS StoreCode,
+            s.store_id AS StoreId,
+            s.store_name AS StoreName,
+            s.store_biznum AS StoreBizNum,
+            s.store_owner_name AS StoreOwnerName,
+            s.store_tel AS StoreTel,
+            s.store_address1 AS StoreAddress1,
+            s.store_address2 AS StoreAddress2,
+            s.store_status AS StoreStatus,
+
+            primary_partner.partner_name AS PrimaryPartnerName,
+            primary_user.user_name AS PrimaryUserName,
+
+            IFNULL(contract_summary.contract_count, 0) AS ContractCount,
+            IFNULL(contract_summary.pccam_contract_count, 0) AS PccamContractCount,
+            IFNULL(contract_summary.viewer_contract_count, 0) AS ViewerContractCount,
+
+            IFNULL(pccam_count.device_count, 0) AS PccamDeviceCount,
+            IFNULL(viewer_count.device_count, 0) AS ViewerDeviceCount,
+
+            s.store_rdate AS RegisteredAt
+        FROM stores s
+
+        LEFT JOIN (
+            SELECT
+                sua.store_code,
+                MIN(sua.partner_code) AS partner_code
+            FROM store_user_assignments sua
+            WHERE sua.status = @AssignmentActive
+              AND sua.is_primary = 1
+            GROUP BY sua.store_code
+        ) primary_assignment
+            ON s.store_code = primary_assignment.store_code
+
+        LEFT JOIN partners primary_partner
+            ON primary_assignment.partner_code = primary_partner.partner_code
+
+        LEFT JOIN (
+            SELECT
+                sua.store_code,
+                MIN(sua.user_code) AS user_code
+            FROM store_user_assignments sua
+            WHERE sua.status = @AssignmentActive
+              AND sua.is_primary = 1
+            GROUP BY sua.store_code
+        ) primary_assignment_user
+            ON s.store_code = primary_assignment_user.store_code
+
+        LEFT JOIN users primary_user
+            ON primary_assignment_user.user_code = primary_user.user_code
+
+        LEFT JOIN (
+            SELECT
+                con_store,
+                COUNT(1) AS contract_count,
+                SUM(IFNULL(con_pcc, 0)) AS pccam_contract_count,
+                SUM(IFNULL(con_view, 0)) AS viewer_contract_count
+            FROM contracts
+            GROUP BY con_store
+        ) contract_summary
+            ON s.store_code = contract_summary.con_store
+
+        LEFT JOIN (
+            SELECT
+                dev_store,
+                COUNT(1) AS device_count
+            FROM devices
+            WHERE dev_apptype = @PccamAppType
+            GROUP BY dev_store
+        ) pccam_count
+            ON s.store_code = pccam_count.dev_store
+
+        LEFT JOIN (
+            SELECT
+                dev_store,
+                COUNT(1) AS device_count
+            FROM devices
+            WHERE dev_apptype = @ViewerAppType
+            GROUP BY dev_store
+        ) viewer_count
+            ON s.store_code = viewer_count.dev_store
+
+        WHERE {string.Join(" AND ", where)}
+        ORDER BY s.store_rdate DESC, s.store_code DESC;
+    ";
+
+        var result = await WithConnectionAsync(conn =>
+            conn.QueryAsync<StoreListItemDto>(sql, param));
+
+        return result.ToList();
+    }
+
+    /// <summary>
+    /// 담당자 기준으로 특정 매장에 접근 가능한지 확인한다.
+    /// 
+    /// 담당자는 본인에게 배정된 매장만 조회/상세 접근할 수 있다.
+    /// </summary>
+    public async Task<bool> CanUserAccessStoreAsync(
+        int userCode,
+        int storeCode)
+    {
+        const string sql = @"
+        SELECT COUNT(1)
+        FROM store_user_assignments
+        WHERE user_code = @UserCode
+          AND store_code = @StoreCode
+          AND status = @ActiveStatus;
+    ";
+
+        var count = await WithConnectionAsync(conn =>
+            conn.ExecuteScalarAsync<int>(
+                sql,
+                new
+                {
+                    UserCode = userCode,
+                    StoreCode = storeCode,
+                    ActiveStatus = (int)AssignmentStatus.Active
+                }));
+
+        return count > 0;
+    }
 }

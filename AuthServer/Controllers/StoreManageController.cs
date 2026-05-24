@@ -35,12 +35,22 @@ public class StoreManageController : ControllerBase
     /// 매장 목록 조회 API.
     /// 
     /// Authorization 헤더의 관리자/담당자 토큰으로 로그인 사용자를 확인한다.
-    /// 관리자는 전체 매장을 조회하고,
-    /// 담당자는 본인에게 배정된 매장만 조회한다.
+    /// 
+    /// 조회 정책:
+    /// - System/Admin: 전체 매장 조회 가능
+    /// - PartnerUser: 본인 소속 파트너사의 매장만 조회 가능
+    /// 
+    /// 검색 조건:
+    /// - 매장 상태
+    /// - 담당 파트너
+    /// - 등록일 범위
+    /// - 계약일 범위
+    /// - 매장 ID / 매장명 검색어
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<List<StoreListItemDto>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<List<StoreListItemDto>>>> GetStores()
+    public async Task<ActionResult<ApiResponse<List<StoreListItemDto>>>> GetStores(
+        [FromQuery] StoreListSearchRequest request)
     {
         var loginUserResult = await GetLoginUserAsync();
 
@@ -51,10 +61,9 @@ public class StoreManageController : ControllerBase
                 loginUserResult.Message));
         }
 
-        var loginUser = loginUserResult.Data;
-
         var result = await _storeManageService.GetStoreListAsync(
-        loginUserResult.Data);
+            loginUserResult.Data,
+            request);
 
         return Ok(result);
     }

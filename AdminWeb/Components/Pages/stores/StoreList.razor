@@ -1,103 +1,258 @@
 ﻿@page "/stores"
 @rendermode InteractiveServer
 
+@using System.Globalization
 @using poscam.AdminWeb.Models.Common
+@using poscam.AdminWeb.Models.Partner
 @using poscam.AdminWeb.Models.Store
+
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 
 <PageTitle>매장 목록</PageTitle>
 
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h3 class="mb-0">매장 목록</h3>
-            <small class="text-muted">관리자 또는 담당자 권한에 따라 조회 가능한 매장만 표시됩니다.</small>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h3 class="mb-1">매장 목록</h3>
+        <div class="text-muted">
+            매장 조회, 검색, 신규 매장 등록을 관리합니다.
         </div>
-
-        <button class="btn btn-primary" @onclick="CreateStore">
-            신규 매장 등록
-        </button>
     </div>
 
-    @if (_isLoading)
-    {
-        <div class="alert alert-info">
-            매장 목록을 불러오는 중입니다.
-        </div>
-    }
-    else if (!string.IsNullOrWhiteSpace(_message))
-    {
-        <div class="alert alert-warning">
-            @_message
-        </div>
-    }
-    else if (_stores.Count == 0)
-    {
-        <div class="alert alert-secondary">
-            조회된 매장이 없습니다.
-        </div>
-    }
-    else
-    {
-        <table class="table table-striped table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>매장코드</th>
-                    <th>매장ID</th>
-                    <th>매장명</th>
-                    <th>사업자번호</th>
-                    <th>대표자</th>
-                    <th>연락처</th>
-                    <th>담당 파트너</th>
-                    <th>담당자</th>
-                    <th>계약</th>
-                    <th>PC캠</th>
-                    <th>캠뷰어</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var store in _stores)
+    <button class="btn btn-primary" @onclick="CreateStore">
+        신규 매장 등록
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_message))
+{
+    <div class="alert @MessageCss">
+        @_message
+    </div>
+}
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header fw-bold">
+        검색 조건
+    </div>
+
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-1">
+                <label class="form-label">매장상태</label>
+                <select class="form-select" @bind="_selectedStoreStatus">
+                    <option value="">전체</option>
+                    <option value="1">유효</option>
+                    <option value="0">비활성</option>
+                    <option value="2">일시중지</option>
+                    <option value="9">차단</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">담당파트너</label>
+
+                @if (_isSystemOrAdmin)
                 {
-                    <tr>
-                        <td>@store.StoreCode</td>
-                        <td>@store.StoreId</td>
-                        <td>@store.StoreName</td>
-                        <td>@store.StoreBizNum</td>
-                        <td>@store.StoreOwnerName</td>
-                        <td>@store.StoreTel</td>
-                        <td>@store.PrimaryPartnerName</td>
-                        <td>@store.PrimaryUserName</td>
-                        <td>@store.ContractCount</td>
-                        <td>@store.PccamDeviceCount</td>
-                        <td>@store.ViewerDeviceCount</td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary"
-                                    @onclick="() => OpenStorePopupAsync(store.StoreCode)">
-                                상세
-                            </button>
-                        </td>
-                    </tr>
+                    <select class="form-select" @bind="_selectedPartnerCode">
+                        <option value="0">전체 파트너사</option>
+
+                        @foreach (var partner in _partners)
+                        {
+                            <option value="@partner.PartnerCode">
+                                @partner.PartnerName
+                            </option>
+                        }
+                    </select>
                 }
-            </tbody>
-        </table>
-    }
+                else
+                {
+                    <input class="form-control"
+                           value="소속 파트너사 매장"
+                           readonly />
+                }
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">등록일 시작</label>
+                <input type="date"
+                       class="form-control"
+                       @bind="_registeredFrom"
+                       @bind:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">등록일 종료</label>
+                <input type="date"
+                       class="form-control"
+                       @bind="_registeredTo"
+                       @bind:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">계약일 시작</label>
+                <input type="date"
+                       class="form-control"
+                       @bind="_contractFrom"
+                       @bind:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">계약일 종료</label>
+                <input type="date"
+                       class="form-control"
+                       @bind="_contractTo"
+                       @bind:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">검색어</label>
+                <input class="form-control"
+                       placeholder="매장 ID 또는 매장명"
+                       @bind="_keyword" />
+            </div>
+
+            <div class="col-md-8 d-flex align-items-end justify-content-end gap-2">
+                <button class="btn btn-outline-secondary"
+                        @onclick="ResetSearch">
+                    초기화
+                </button>
+
+                <button class="btn btn-dark"
+                        @onclick="SearchAsync">
+                    조회
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>매장 목록</strong>
+        <span class="text-muted">총 @_stores.Count.ToString("N0")개</span>
+    </div>
+
+    <div class="card-body p-0">
+        @if (_isLoading)
+        {
+            <div class="p-4 text-muted">
+                매장 목록을 불러오는 중입니다.
+            </div>
+        }
+        else if (_stores.Count == 0)
+        {
+            <div class="p-4 text-muted">
+                조회된 매장이 없습니다.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center" style="width:70px;">순번</th>
+                            <th style="width:120px;">매장ID</th>
+                            <th>매장명</th>
+                            <th style="width:150px;">사업자번호</th>
+                            <th style="width:120px;">대표자명</th>
+                            <th style="width:160px;">담당파트너</th>
+                            <th style="width:130px;">담당자</th>
+                            <th class="text-end" style="width:90px;">계약</th>
+                            <th class="text-end" style="width:120px;">PC캠</th>
+                            <th class="text-end" style="width:120px;">캠뷰어</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @for (var i = 0; i < _stores.Count; i++)
+                        {
+                            var store = _stores[i];
+
+                            <tr>
+                                <td class="text-center">
+                                    @(i + 1)
+                                </td>
+
+                                <td>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-decoration-none"
+                                            @onclick="() => OpenStorePopupAsync(store.StoreCode)">
+                                        @store.StoreId
+                                    </button>
+                                </td>
+
+                                <td>
+                                    <button type="button"
+                                            class="btn btn-link p-0 text-decoration-none fw-semibold"
+                                            @onclick="() => OpenStorePopupAsync(store.StoreCode)">
+                                        @store.StoreName
+                                    </button>
+                                </td>
+
+                                <td>@Display(store.StoreBizNum)</td>
+                                <td>@Display(store.StoreOwnerName)</td>
+                                <td>@Display(store.PrimaryPartnerName)</td>
+                                <td>@Display(store.PrimaryUserName)</td>
+
+                                <td class="text-end">
+                                    @store.ContractCount.ToString("N0")
+                                </td>
+
+                                <td class="text-end">
+                                    @store.PccamContractCount.ToString("N0")
+                                </td>
+
+                                <td class="text-end">
+                                    @store.ViewerContractCount.ToString("N0")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
 </div>
 
 @code {
     private bool _isLoading = true;
+    private bool _isSystemOrAdmin;
+    private bool _isSuccessMessage;
+
+    private int? _selectedStoreStatus = 1;
+    private int _selectedPartnerCode;
+
+    private DateTime? _registeredFrom;
+    private DateTime? _registeredTo;
+    private DateTime? _contractFrom;
+    private DateTime? _contractTo;
+    private string? _keyword;
 
     private string? _message;
 
+    private List<PartnerListItemDto> _partners = new();
     private List<StoreListItemDto> _stores = new();
+
+    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
         {
             return;
+        }
+
+        var role = await AuthStateService.GetUserRoleAsync();
+
+        _isSystemOrAdmin = role is 0 or 1;
+
+        if (_isSystemOrAdmin)
+        {
+            await LoadPartnersAsync();
         }
 
         await LoadStoresAsync();
@@ -107,24 +262,74 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task LoadStoresAsync()
+    private async Task LoadPartnersAsync()
     {
         try
         {
-            var result = await ApiClient.GetAsync<ApiResponse<List<StoreListItemDto>>>(
-                "/api/manage/stores");
+            var result = await ApiClient.GetAsync<ApiResponse<List<PartnerListItemDto>>>(
+                "/api/admin/partners");
 
             if (result == null)
             {
-                _message = "서버 응답을 받을 수 없습니다.";
+                SetWarning("파트너사 목록 응답을 받을 수 없습니다.");
                 return;
             }
 
             if (!result.Success)
             {
-                _message = result.Message;
+                SetWarning(result.Message);
+                return;
+            }
 
-                if (result.Message.Contains("토큰") || result.Message.Contains("로그인"))
+            _partners = result.Data ?? new List<PartnerListItemDto>();
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"파트너사 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        await LoadStoresAsync();
+    }
+
+    private async Task LoadStoresAsync()
+    {
+        _message = null;
+        _isLoading = true;
+
+        if (!ValidateDateRange(_registeredFrom, _registeredTo, "등록일"))
+        {
+            _isLoading = false;
+            return;
+        }
+
+        if (!ValidateDateRange(_contractFrom, _contractTo, "계약일"))
+        {
+            _isLoading = false;
+            return;
+        }
+
+        try
+        {
+            var query = BuildQueryString();
+
+            var result = await ApiClient.GetAsync<ApiResponse<List<StoreListItemDto>>>(
+                $"/api/manage/stores{query}");
+
+            if (result == null)
+            {
+                SetWarning("서버 응답을 받을 수 없습니다.");
+                return;
+            }
+
+            if (!result.Success)
+            {
+                SetWarning(result.Message);
+
+                if (result.Message.Contains("토큰") ||
+                    result.Message.Contains("로그인"))
                 {
                     NavigationManager.NavigateTo("/login");
                 }
@@ -136,14 +341,96 @@
         }
         catch (Exception ex)
         {
-            _message = $"매장 목록 조회 중 오류가 발생했습니다. {ex.Message}";
+            SetWarning($"매장 목록 조회 중 오류가 발생했습니다. {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
         }
     }
+
+    private string BuildQueryString()
+    {
+        var query = new List<string>();
+
+        if (_selectedStoreStatus != null)
+        {
+            query.Add($"storeStatus={_selectedStoreStatus.Value}");
+        }
+
+        if (_isSystemOrAdmin && _selectedPartnerCode > 0)
+        {
+            query.Add($"partnerCode={_selectedPartnerCode}");
+        }
+
+        AddQuery(query, "registeredFrom", _registeredFrom);
+        AddQuery(query, "registeredTo", _registeredTo);
+        AddQuery(query, "contractFrom", _contractFrom);
+        AddQuery(query, "contractTo", _contractTo);
+
+        if (!string.IsNullOrWhiteSpace(_keyword))
+        {
+            query.Add($"keyword={Uri.EscapeDataString(_keyword.Trim())}");
+        }
+
+        if (query.Count == 0)
+        {
+            return "";
+        }
+
+        return "?" + string.Join("&", query);
+    }
+
+    private static void AddQuery(
+    List<string> query,
+    string key,
+    DateTime? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        var dateText = value.Value.ToString(
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+
+        query.Add($"{key}={Uri.EscapeDataString(dateText)}");
+    }
+
+    private bool ValidateDateRange( DateTime? from, DateTime? to, string label)
+    {
+        if (from == null || to == null)
+        {
+            return true;
+        }
+
+        if (from.Value.Date > to.Value.Date)
+        {
+            SetWarning($"{label} 시작일은 종료일보다 클 수 없습니다.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ResetSearch()
+    {
+        _selectedStoreStatus = 1;
+        _selectedPartnerCode = 0;
+
+        _registeredFrom = null;
+        _registeredTo = null;
+        _contractFrom = null;
+        _contractTo = null;
+
+        _keyword = null;
+        _message = null;
+    }
+
     /// <summary>
     /// 매장 상세 팝업을 연다.
-    ///
     /// popup.js의 poscamPopup.openStoreDetail(storeCode)를 호출한다.
-    /// 실제 팝업 URL은 /stores/popup/{storeCode} 형식으로 열린다.
     /// </summary>
     private async Task OpenStorePopupAsync(int storeCode)
     {
@@ -151,15 +438,29 @@
         {
             return;
         }
+
         await JS.InvokeVoidAsync("poscamPopup.openStoreDetail", storeCode);
-    }
-    private void OpenDetail(int storeCode)
-    {
-        NavigationManager.NavigateTo($"/stores/{storeCode}");
     }
 
     private void CreateStore()
     {
         NavigationManager.NavigateTo("/stores/new");
+    }
+
+    private static string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+
+    private void SetSuccess(string message)
+    {
+        _isSuccessMessage = true;
+        _message = message;
+    }
+
+    private void SetWarning(string message)
+    {
+        _isSuccessMessage = false;
+        _message = message;
     }
 }

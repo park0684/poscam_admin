@@ -95,10 +95,18 @@ public class StoreManageService
     /// 권한 정책:
     /// - System: 전체 매장 조회 가능
     /// - Admin: StoreManage 권한이 있어야 전체 매장 조회 가능
-    /// - PartnerUser: 본인 소속 파트너사에 연결된 매장만 조회 가능
+    /// - PartnerUser: 본인이 소속된 파트너사의 매장만 조회 가능
+    /// 
+    /// 검색 조건:
+    /// - 매장 상태
+    /// - 담당 파트너
+    /// - 등록일 범위
+    /// - 계약일 범위
+    /// - 매장 ID / 매장명
     /// </summary>
     public async Task<ApiResponse<List<StoreListItemDto>>> GetStoreListAsync(
-        UserAccount loginUser)
+    UserAccount loginUser,
+    StoreListSearchRequest request)
     {
         if (loginUser == null)
         {
@@ -107,16 +115,24 @@ public class StoreManageService
                 "로그인 정보가 없습니다.");
         }
 
+        request ??= new StoreListSearchRequest();
+
+        var validateResult = ValidateStoreListSearchRequest(request);
+
+        if (!validateResult.Success)
+        {
+            return ApiResponse<List<StoreListItemDto>>.Fail(
+                validateResult.ErrorCode,
+                validateResult.Message);
+        }
+
         var loginUserRole = (UserRole)loginUser.UserRole;
 
         List<StoreListItemDto> stores;
 
-        // System / Admin은 StoreManage 권한 확인
-        if (loginUserRole == UserRole.System ||
-            loginUserRole == UserRole.Admin)
+        if (loginUserRole == UserRole.System || loginUserRole == UserRole.Admin)
         {
-            var permissionResult = await CheckStoreManagePermissionAsync(
-                loginUser);
+            var permissionResult = await CheckStoreManagePermissionAsync(loginUser);
 
             if (!permissionResult.Success)
             {
@@ -125,21 +141,27 @@ public class StoreManageService
                     permissionResult.Message);
             }
 
-            stores = await _storeRepository.GetListForAdminAsync();
+            stores = await _storeRepository.GetListForAdminAsync(request);
         }
-        // 담당자는 본인 소속 파트너사의 매장만 조회 가능
         else if (loginUserRole == UserRole.PartnerUser)
         {
-            if (loginUser.PartnerCode == null ||
-                loginUser.PartnerCode <= 0)
+            if (loginUser.PartnerCode == null || loginUser.PartnerCode <= 0)
             {
                 return ApiResponse<List<StoreListItemDto>>.Fail(
                     AuthErrorCode.InvalidLogin,
-                    "담당자 계정에 파트너사가 지정되어 있지 않습니다.");
+                    "담당자 계정에 소속 파트너 정보가 없습니다.");
             }
 
+            /*
+             * 담당자는 본인이 지정된 매장이 아니라,
+             * 본인이 소속된 파트너사의 매장 전체를 조회한다.
+             *
+             * 보안상 클라이언트에서 partnerCode를 전달하더라도 사용하지 않고,
+             * 로그인 토큰에서 확인된 PartnerCode만 사용한다.
+             */
             stores = await _storeRepository.GetListForPartnerAsync(
-                loginUser.PartnerCode.Value);
+                loginUser.PartnerCode.Value,
+                request);
         }
         else
         {
@@ -151,6 +173,41 @@ public class StoreManageService
         return ApiResponse<List<StoreListItemDto>>.Ok(
             stores,
             "매장 목록을 조회했습니다.");
+    }
+
+    /// <summary>
+    /// 매장 목록 검색 조건을 검증한다.
+    /// </summary>
+    private static ApiResponse<bool> ValidateStoreListSearchRequest(
+        StoreListSearchRequest request)
+    {
+        if (request.StoreStatus != null &&
+            !Enum.IsDefined(typeof(StoreStatus), request.StoreStatus.Value))
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidStore,
+                "매장 상태값이 올바르지 않습니다.");
+        }
+
+        if (request.RegisteredFrom != null &&
+            request.RegisteredTo != null &&
+            request.RegisteredFrom.Value.Date > request.RegisteredTo.Value.Date)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidStore,
+                "등록일 시작일은 종료일보다 클 수 없습니다.");
+        }
+
+        if (request.ContractFrom != null &&
+            request.ContractTo != null &&
+            request.ContractFrom.Value.Date > request.ContractTo.Value.Date)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidStore,
+                "계약일 시작일은 종료일보다 클 수 없습니다.");
+        }
+
+        return ApiResponse<bool>.Ok(true, "검색 조건이 올바릅니다.");
     }
 
     /// <summary>
