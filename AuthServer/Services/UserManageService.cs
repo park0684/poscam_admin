@@ -336,21 +336,24 @@ public class UserManageService
 
     /// <summary>
     /// 담당자 정보 수정.
-    /// 실제 정보 수정은 관리자만 수행한다.
-    /// 담당자는 별도 요청 API를 통해 변경 요청만 등록한다.
+    /// 
+    /// System/Admin:
+    /// - 파트너사, 담당자명, 연락처, 이메일 수정 가능
+    /// 
+    /// PartnerUser:
+    /// - 본인 계정의 연락처, 이메일만 직접 수정 가능
+    /// - 아이디, 담당자명, 파트너사, 상태는 직접 수정 불가
     /// </summary>
     public async Task<ApiResponse<UserSaveResponse>> UpdateUserAsync(
         int userCode,
         UserUpdateRequest request,
         UserAccount loginUser)
     {
-        var permissionResult = await CheckPartnerUserManagePermissionAsync(loginUser);
-
-        if (!permissionResult.Success)
+        if (loginUser == null)
         {
             return ApiResponse<UserSaveResponse>.Fail(
-                permissionResult.ErrorCode,
-                permissionResult.Message);
+                AuthErrorCode.InvalidLogin,
+                "로그인 정보가 없습니다.");
         }
 
         if (userCode <= 0 || request.UserCode != userCode)
@@ -369,57 +372,29 @@ public class UserManageService
                 "담당자 정보를 찾을 수 없습니다.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.UserName))
+        var loginUserRole = (UserRole)loginUser.UserRole;
+
+        if (loginUserRole == UserRole.System || loginUserRole == UserRole.Admin)
         {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "담당자명을 입력하세요.");
+            return await UpdateUserByAdminAsync(
+                userCode,
+                request,
+                existingUser,
+                loginUser);
         }
 
-        var changedFieldsJson = BuildChangedFieldsJson(existingUser, request);
-
-        var updateUser = new UserAccount
+        if (loginUserRole == UserRole.PartnerUser)
         {
-            UserCode = userCode,
-            PartnerCode = request.PartnerCode,
-            UserName = request.UserName.Trim(),
-            UserCell = request.UserCell,
-            UserEmail = request.UserEmail
-        };
-
-        var affected = await _userAccountRepository.UpdateUserInfoAsync(updateUser);
-
-        if (affected <= 0)
-        {
-            return ApiResponse<UserSaveResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "담당자 정보가 수정되지 않았습니다.");
+            return await UpdateMyContactInfoAsync(
+                userCode,
+                request,
+                existingUser,
+                loginUser);
         }
 
-        await _userLogRepository.InsertAsync(new UserLog
-        {
-            UserCode = userCode,
-            PartnerCode = request.PartnerCode,
-            UlogType = (int)UserLogType.InfoChangeCompleted,
-            UlogRequestType = (int)UserRequestType.InfoChange,
-            UlogRequestStatus = (int)UserRequestStatus.Completed,
-            UlogChangedFields = changedFieldsJson,
-            UlogMemo = "관리자에 의한 담당자 정보 수정",
-            UlogProcessedBy = loginUser.UserCode,
-            UlogProcessedAt = DateTime.Now
-        });
-
-        return ApiResponse<UserSaveResponse>.Ok(
-            new UserSaveResponse
-            {
-                UserCode = userCode,
-                PartnerCode = request.PartnerCode,
-                UserId = existingUser.UserId,
-                UserName = request.UserName,
-                Created = false,
-                Saved = true
-            },
-            "담당자 정보가 수정되었습니다.");
+        return ApiResponse<UserSaveResponse>.Fail(
+            AuthErrorCode.PermissionDenied,
+            "담당자 정보를 수정할 권한이 없습니다.");
     }
 
     /// <summary>
@@ -1117,6 +1092,179 @@ public class UserManageService
     }
 
     /// <summary>
+    /// 관리자에 의한 담당자 정보 수정.
+    /// 기존 정책을 유지한다.
+    /// </summary>
+    private async Task<ApiResponse<UserSaveResponse>> UpdateUserByAdminAsync(
+        int userCode,
+        UserUpdateRequest request,
+        UserAccount existingUser,
+        UserAccount loginUser)
+    {
+        var permissionResult = await CheckPartnerUserManagePermissionAsync(loginUser);
+
+        if (!permissionResult.Success)
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                permissionResult.ErrorCode,
+                permissionResult.Message);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserName))
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자명을 입력하세요.");
+        }
+
+        var changedFieldsJson = BuildChangedFieldsJson(existingUser, request);
+
+        var updateUser = new UserAccount
+        {
+            UserCode = userCode,
+            PartnerCode = request.PartnerCode,
+            UserName = request.UserName.Trim(),
+            UserCell = request.UserCell,
+            UserEmail = request.UserEmail
+        };
+
+        var affected = await _userAccountRepository.UpdateUserInfoAsync(updateUser);
+
+        if (affected <= 0)
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 정보가 수정되지 않았습니다.");
+        }
+
+        await _userLogRepository.InsertAsync(new UserLog
+        {
+            UserCode = userCode,
+            PartnerCode = request.PartnerCode,
+            UlogType = (int)UserLogType.InfoChangeCompleted,
+            UlogRequestType = (int)UserRequestType.InfoChange,
+            UlogRequestStatus = (int)UserRequestStatus.Completed,
+            UlogChangedFields = changedFieldsJson,
+            UlogMemo = "관리자에 의한 담당자 정보 수정",
+            UlogProcessedBy = loginUser.UserCode,
+            UlogProcessedAt = DateTime.Now
+        });
+
+        return ApiResponse<UserSaveResponse>.Ok(
+            new UserSaveResponse
+            {
+                UserCode = userCode,
+                PartnerCode = request.PartnerCode,
+                UserId = existingUser.UserId,
+                UserName = request.UserName,
+                Created = false,
+                Saved = true
+            },
+            "담당자 정보가 수정되었습니다.");
+    }
+
+
+    /// <summary>
+    /// 담당자 본인의 연락처/이메일 직접 수정.
+    /// 
+    /// 아이디, 담당자명, 파트너사, 상태는 수정하지 않는다.
+    /// </summary>
+    private async Task<ApiResponse<UserSaveResponse>> UpdateMyContactInfoAsync(
+        int userCode,
+        UserUpdateRequest request,
+        UserAccount existingUser,
+        UserAccount loginUser)
+    {
+        if (loginUser.UserCode != userCode)
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "본인 계정의 연락처와 이메일만 직접 수정할 수 있습니다.");
+        }
+
+        if (loginUser.PartnerCode == null ||
+            existingUser.PartnerCode != loginUser.PartnerCode)
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "본인 파트너사 계정만 수정할 수 있습니다.");
+        }
+
+        var changedFields = new Dictionary<string, object?>();
+
+        if ((existingUser.UserCell ?? "") != (request.UserCell ?? ""))
+        {
+            changedFields["UserCell"] = new
+            {
+                Before = existingUser.UserCell,
+                After = request.UserCell
+            };
+        }
+
+        if ((existingUser.UserEmail ?? "") != (request.UserEmail ?? ""))
+        {
+            changedFields["UserEmail"] = new
+            {
+                Before = existingUser.UserEmail,
+                After = request.UserEmail
+            };
+        }
+
+        if (changedFields.Count == 0)
+        {
+            return ApiResponse<UserSaveResponse>.Ok(
+                new UserSaveResponse
+                {
+                    UserCode = existingUser.UserCode,
+                    PartnerCode = existingUser.PartnerCode,
+                    UserId = existingUser.UserId,
+                    UserName = existingUser.UserName,
+                    Created = false,
+                    Saved = true
+                },
+                "변경된 정보가 없습니다.");
+        }
+
+        var affected = await _userAccountRepository.UpdateUserContactInfoAsync(
+            userCode,
+            request.UserCell,
+            request.UserEmail);
+
+        if (affected <= 0)
+        {
+            return ApiResponse<UserSaveResponse>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "연락처 정보가 수정되지 않았습니다.");
+        }
+
+        var changedFieldsJson = JsonSerializer.Serialize(changedFields);
+
+        await _userLogRepository.InsertAsync(new UserLog
+        {
+            UserCode = userCode,
+            PartnerCode = existingUser.PartnerCode,
+            UlogType = (int)UserLogType.InfoChangeCompleted,
+            UlogRequestType = (int)UserRequestType.InfoChange,
+            UlogRequestStatus = (int)UserRequestStatus.Completed,
+            UlogChangedFields = changedFieldsJson,
+            UlogMemo = "담당자 본인 연락처/이메일 수정",
+            UlogProcessedBy = loginUser.UserCode,
+            UlogProcessedAt = DateTime.Now
+        });
+
+        return ApiResponse<UserSaveResponse>.Ok(
+            new UserSaveResponse
+            {
+                UserCode = existingUser.UserCode,
+                PartnerCode = existingUser.PartnerCode,
+                UserId = existingUser.UserId,
+                UserName = existingUser.UserName,
+                Created = false,
+                Saved = true
+            },
+            "연락처 정보가 수정되었습니다.");
+    }
+    /// <summary>
     /// 특정 담당자 정보를 조회할 수 있는지 확인한다.
     /// 
     /// System / Admin:
@@ -1243,6 +1391,7 @@ public class UserManageService
         {
             UserCode = user.UserCode,
             PartnerCode = user.PartnerCode,
+            PartnerName = user.PartnerName,
             UserId = user.UserId,
             UserName = user.UserName,
             UserCell = user.UserCell,

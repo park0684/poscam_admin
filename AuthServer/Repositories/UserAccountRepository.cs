@@ -580,9 +580,30 @@ ORDER BY
     {
         var sql = $@"
 SELECT
-{UserAccountSelectColumns}
-FROM users u
-WHERE u.user_code = @UserCode;
+     u.user_code AS UserCode,
+     u.partner_code AS PartnerCode,
+     p.partner_name AS PartnerName,
+     u.user_id AS UserId,
+     u.user_password_hash AS UserPasswordHash,
+     u.user_name AS UserName,
+     u.user_cell AS UserCell,
+     u.user_email AS UserEmail,
+     u.user_role AS UserRole,
+     u.user_status AS UserStatus,
+     u.approved_by AS ApprovedBy,
+     u.approved_at AS ApprovedAt,
+     u.user_rdate AS UserRdate,
+     u.user_udate AS UserUdate,
+     u.user_request_type AS UserRequestType,
+     u.user_request_status AS UserRequestStatus,
+     u.user_request_reason AS UserRequestReason,
+     u.user_requested_by AS UserRequestedBy,
+     u.user_requested_at AS UserRequestedAt,
+     u.user_request_result_memo AS UserRequestResultMemo
+        FROM users u
+        LEFT JOIN partners p
+            ON u.partner_code = p.partner_code
+        WHERE u.user_code = @UserCode;
 ";
 
         return await WithConnectionAsync(conn =>
@@ -1181,6 +1202,36 @@ WHERE user_code = @UserCode
                     UserCode = userCode,
                     UserStatus = userStatus,
                     AdminRole = (int)UserRole.Admin
+                }));
+    }
+
+    /// <summary>
+    /// 담당자 본인의 연락처/이메일만 수정한다.
+    /// 
+    /// 담당자 직접 수정용 메서드이다.
+    /// 아이디, 담당자명, 파트너사, 상태는 수정하지 않는다.
+    /// </summary>
+    public async Task<int> UpdateUserContactInfoAsync(
+        int userCode,
+        string? userCell,
+        string? userEmail)
+    {
+        const string sql = @"
+        UPDATE users
+        SET user_cell = @UserCell,
+            user_email = @UserEmail,
+            user_udate = NOW()
+        WHERE user_code = @UserCode;
+    ";
+
+        return await WithConnectionAsync(conn =>
+            conn.ExecuteAsync(
+                sql,
+                new
+                {
+                    UserCode = userCode,
+                    UserCell = userCell,
+                    UserEmail = userEmail
                 }));
     }
 }

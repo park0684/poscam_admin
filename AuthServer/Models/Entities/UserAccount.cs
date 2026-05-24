@@ -135,4 +135,10 @@ public class UserAccount
     /// 관리자가 승인/반려/처리 시 남기는 메모.
     /// </summary>
     public string? UserRequestResultMemo { get; set; }
+
+    /// <summary>
+    /// 소속 파트너사명.
+    /// 상세 화면 표시용으로 사용한다.
+    /// </summary>
+    public string? PartnerName { get; set; }
 }
