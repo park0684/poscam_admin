@@ -442,9 +442,16 @@
         await JS.InvokeVoidAsync("poscamPopup.openStoreDetail", storeCode);
     }
 
-    private void CreateStore()
+    private async Task CreateStore()
     {
-        NavigationManager.NavigateTo("/stores/new");
+        try
+        {
+            await JS.InvokeVoidAsync("poscamPopup.openStoreCreate");
+        }
+        catch (Exception ex)
+        {
+            SetWarning($"신규 매장 등록 팝업을 여는 중 오류가 발생했습니다. {ex.Message}");
+        }
     }
 
     private static string Display(string? value)

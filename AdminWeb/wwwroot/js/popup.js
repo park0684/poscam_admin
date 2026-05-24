@@ -1,4 +1,15 @@
 ﻿window.poscamPopup = {
+    /** 
+    * 신규 매장 등록 팝업
+    */
+    openStoreCreate: function () {
+        this.openFixedPopup(
+            `/stores/popup/new`,
+            `store_create`,
+            1420,
+            720
+        );
+    },
     /**
      * 매장 상세 팝업
      */
@@ -108,6 +119,14 @@
         // 브라우저 팝업 차단이 활성화되어 있으면 popup이 null일 수 있다.
         if (popup) {
             popup.focus();
+        }
+    }
+    /**
+    * 팝업 부모창 새로고침
+    */
+    refreshOpener: function () {
+        if (window.opener && !window.opener.closed) {
+            window.opener.location.reload();
         }
     }
 };
