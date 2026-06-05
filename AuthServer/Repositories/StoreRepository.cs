@@ -851,4 +851,40 @@ WHERE partner_code = @PartnerCode
 
         return count > 0;
     }
+
+    /// <summary>
+    /// 매장 로그인 ID로 매장을 조회한다.
+    /// 
+    /// 캠뷰어 로그인 시 사용자가 입력하는 매장코드는
+    /// stores.store_code가 아니라 stores.store_id이다.
+    /// </summary>
+    public async Task<Store?> GetByLoginIdAsync(string storeId)
+    {
+        const string sql = @"
+        SELECT 
+            store_code AS StoreCode,
+            store_id AS StoreId,
+            store_password AS StorePassword,
+            store_name AS StoreName,
+            store_biznum AS StoreBizNum,
+            store_owner_name AS StoreOwnerName,
+            store_tel AS StoreTel,
+            store_email AS StoreEmail,
+            store_zipcode AS StoreZipcode,
+            store_address1 AS StoreAddress1,
+            store_address2 AS StoreAddress2,
+            store_memo AS StoreMemo,
+            store_status AS StoreStatus,
+            store_rdate AS StoreRDate,
+            store_udate AS StoreUDate
+        FROM stores
+        WHERE store_id = @StoreId
+        LIMIT 1;
+    ";
+
+        return await WithConnectionAsync(conn =>
+            conn.QueryFirstOrDefaultAsync<Store>(
+                sql,
+                new { StoreId = storeId }));
+    }
 }

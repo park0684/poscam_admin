@@ -3,24 +3,20 @@
 /// <summary>
 /// 캠뷰어 로그인 요청 DTO.
 /// 
-/// 캠뷰어는 PC 캠처럼 인증키에 강하게 묶지 않고,
-/// 매장 계정 + HWID + 슬롯 수량 기준으로 인증한다.
+/// 사용자가 입력하는 매장코드는 stores.store_code가 아니라
+/// stores.store_id 값이다.
 /// </summary>
 public class ViewerLoginRequest
 {
     /// <summary>
-    /// 매장 코드.
-    /// </summary>
-    public int StoreCode { get; set; }
-
-    /// <summary>
     /// 매장 로그인 ID.
+    /// 화면에서는 "매장코드"로 표시할 수 있지만,
+    /// DB 기준으로는 stores.store_id에 해당한다.
     /// </summary>
     public string StoreId { get; set; } = "";
 
     /// <summary>
     /// 매장 로그인 비밀번호.
-    /// 현재는 평문 검증 기준이며, 추후 해시 검증으로 변경 가능하다.
     /// </summary>
     public string StorePassword { get; set; } = "";
 
@@ -32,7 +28,7 @@ public class ViewerLoginRequest
 
     /// <summary>
     /// 장비명.
-    /// 예: 점주 노트북, 사무실 PC
+    /// 예: 점주 노트북, 사무실 PC.
     /// </summary>
     public string? DeviceName { get; set; }
 

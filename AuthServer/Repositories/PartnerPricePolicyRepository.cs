@@ -41,7 +41,7 @@ public class PartnerPricePolicyRepository : RepositoryBase
         const string sql = @"
 SELECT
     ppp.ppp_code AS PppCode,
-    ppp.partner_code AS PartnerCode,
+    ppp.ppp_partner AS PartnerCode,
     p.partner_name AS PartnerName,
 
     ppp.ppp_pccam_price AS PppPccamPrice,
@@ -88,7 +88,7 @@ ORDER BY
         const string sql = @"
 SELECT
     ppp_code AS PppCode,
-    partner_code AS PartnerCode,
+    ppp_partner AS PartnerCode,
     ppp_pccam_price AS PppPccamPrice,
     ppp_viewer_price AS PppViewerPrice,
     ppp_start_month AS PppStartMonth,
@@ -132,7 +132,7 @@ WHERE ppp_code = @PppCode;
         const string sql = @"
 SELECT
     ppp_code AS PppCode,
-    partner_code AS PartnerCode,
+    ppp_partner AS PartnerCode,
     ppp_pccam_price AS PppPccamPrice,
     ppp_viewer_price AS PppViewerPrice,
     ppp_start_month AS PppStartMonth,
@@ -142,7 +142,7 @@ SELECT
     ppp_rdate AS PppRdate,
     ppp_udate AS PppUdate
 FROM partner_price_policy
-WHERE partner_code = @PartnerCode
+WHERE ppp_partner = @PartnerCode
   AND ppp_status = 1
   AND ppp_start_month <= @BillMonth
   AND (ppp_end_month IS NULL OR ppp_end_month >= @BillMonth)
@@ -206,7 +206,7 @@ WHERE partner_code = @PartnerCode
         const string sql = @"
 INSERT INTO partner_price_policy
 (
-    partner_code,
+    ppp_partner,
     ppp_pccam_price,
     ppp_viewer_price,
     ppp_start_month,
@@ -260,7 +260,7 @@ SELECT LAST_INSERT_ID();
         const string sql = @"
 UPDATE partner_price_policy
 SET
-    partner_code = @PartnerCode,
+    ppp_partner = @PartnerCode,
     ppp_pccam_price = @PppPccamPrice,
     ppp_viewer_price = @PppViewerPrice,
     ppp_start_month = @PppStartMonth,
@@ -345,7 +345,7 @@ WHERE ppp_code = @PppCode;
         const string sql = @"
 SELECT COUNT(1)
 FROM partner_price_policy
-WHERE partner_code = @PartnerCode
+WHERE ppp_partner = @PartnerCode
   AND ppp_status = 1
   AND (@ExcludePppCode IS NULL OR ppp_code <> @ExcludePppCode)
   AND ppp_start_month <= COALESCE(@EndMonth, 999912)

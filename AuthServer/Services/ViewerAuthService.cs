@@ -50,8 +50,9 @@ public class ViewerAuthService
     /// <summary>
     /// 캠뷰어 최초 로그인.
     /// 
-    /// 이 로그인은 프로그램 사용 목적이 아니라,
-    /// 최초 실행 또는 토큰이 없는 상태에서 토큰을 발급받기 위한 절차다.
+    /// 사용자는 stores.store_code를 입력하지 않는다.
+    /// 화면에서 입력하는 매장코드는 stores.store_id이며,
+    /// 서버가 store_id로 매장을 조회한 뒤 내부 store_code를 사용한다.
     /// 
     /// 기존 HWID가 이미 등록되어 있으면 장비를 새로 등록하지 않고 토큰만 갱신한다.
     /// 신규 HWID이면 계약의 캠뷰어 허용 수량을 확인한 뒤 devices에 등록한다.
@@ -60,13 +61,6 @@ public class ViewerAuthService
         ViewerLoginRequest request,
         string? requestIp = null)
     {
-        if (request.StoreCode <= 0)
-        {
-            return ApiResponse<ViewerLoginResponse>.Fail(
-                AuthErrorCode.InvalidStore,
-                "매장 코드가 올바르지 않습니다.");
-        }
-
         if (string.IsNullOrWhiteSpace(request.StoreId))
         {
             return ApiResponse<ViewerLoginResponse>.Fail(
@@ -88,23 +82,25 @@ public class ViewerAuthService
                 "장비 식별값이 올바르지 않습니다.");
         }
 
+        var storeId = request.StoreId.Trim();
         var hwid = request.Hwid.Trim();
 
-        var store = await _storeRepository.GetByLoginIdAsync(
-            request.StoreCode,
-            request.StoreId.Trim());
+        // 중요:
+        // 사용자가 입력하는 매장코드는 stores.store_code가 아니라 stores.store_id이다.
+        // store_code는 서버에서 조회된 Store 엔티티의 StoreCode를 사용한다.
+        var store = await _storeRepository.GetByLoginIdAsync(storeId);
 
         if (store == null)
         {
             await WriteAuthLogAsync(
                 AuthRequestType.ViewerLogin,
-                request.StoreCode,
+                null,
                 AuthResult.Fail,
                 AuthErrorCode.InvalidLogin,
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     request.ProgramVersion,
                     reason = "Invalid store login id"
@@ -119,13 +115,13 @@ public class ViewerAuthService
         {
             await WriteAuthLogAsync(
                 AuthRequestType.ViewerLogin,
-                request.StoreCode,
+                store.StoreCode,
                 AuthResult.Fail,
                 AuthErrorCode.InvalidPassword,
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     request.ProgramVersion,
                     reason = "Invalid store password"
@@ -146,7 +142,7 @@ public class ViewerAuthService
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     request.ProgramVersion,
                     reason = "Store inactive"
@@ -157,7 +153,9 @@ public class ViewerAuthService
                 "비활성 상태의 매장입니다.");
         }
 
-        var activeContract = await GetValidActiveContractAsync(store.StoreCode);
+        // 기존 GetValidActiveContractAsync가 아니라
+        // 캠뷰어 수량이 있는 계약만 조회해야 한다.
+        var activeContract = await GetValidActiveViewerContractAsync(store.StoreCode);
 
         if (activeContract == null)
         {
@@ -169,15 +167,15 @@ public class ViewerAuthService
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     request.ProgramVersion,
-                    reason = "Valid active contract not found"
+                    reason = "Valid active viewer contract not found"
                 });
 
             return ApiResponse<ViewerLoginResponse>.Fail(
                 AuthErrorCode.ContractNotFound,
-                "사용 가능한 계약 정보를 찾을 수 없습니다.");
+                "사용 가능한 캠뷰어 계약 정보를 찾을 수 없습니다.");
         }
 
         var nvrConfig = await _nvrConfigRepository.GetByStoreAsync(store.StoreCode);
@@ -208,7 +206,7 @@ public class ViewerAuthService
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     existingDevice.DevCode,
                     request.ProgramVersion,
@@ -241,7 +239,7 @@ public class ViewerAuthService
                 requestIp,
                 new
                 {
-                    request.StoreId,
+                    StoreId = storeId,
                     Hwid = hwid,
                     request.ProgramVersion,
                     currentViewerCount,
@@ -300,7 +298,7 @@ public class ViewerAuthService
                     requestIp,
                     new
                     {
-                        request.StoreId,
+                        StoreId = storeId,
                         Hwid = hwid,
                         deviceCode,
                         request.ProgramVersion,
@@ -544,6 +542,30 @@ public class ViewerAuthService
                 "계약의 매장 정보가 토큰의 매장 정보와 일치하지 않습니다.");
         }
 
+        // 캠뷰어 계약 수량이 없는 계약은 캠뷰어 인증에 사용할 수 없다.
+        if (contract.ConView <= 0)
+        {
+            await WriteAuthLogAsync(
+                AuthRequestType.ViewerTokenVerify,
+                storeCode,
+                AuthResult.Fail,
+                AuthErrorCode.ContractNotFound,
+                requestIp,
+                new
+                {
+                    Hwid = hwid,
+                    payload.DeviceCode,
+                    contract.ConCode,
+                    contract.ConView,
+                    request.ProgramVersion,
+                    reason = "Contract has no viewer slot"
+                });
+
+            return ApiResponse<ViewerTokenVerifyResponse>.Fail(
+                AuthErrorCode.ContractNotFound,
+                "사용 가능한 캠뷰어 계약 정보를 찾을 수 없습니다.");
+        }
+
         var contractError = ValidateContract(contract);
 
         if (contractError != AuthErrorCode.None)
@@ -640,11 +662,18 @@ public class ViewerAuthService
         ViewerDeviceReleaseRequest request,
         string? requestIp = null)
     {
-        if (request.StoreCode <= 0)
+        if (string.IsNullOrWhiteSpace(request.StoreId))
         {
             return ApiResponse<ViewerDeviceReleaseResponse>.Fail(
-                AuthErrorCode.InvalidStore,
-                "매장 코드가 올바르지 않습니다.");
+                AuthErrorCode.InvalidLogin,
+                "매장 ID를 입력해야 합니다.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.StorePassword))
+        {
+            return ApiResponse<ViewerDeviceReleaseResponse>.Fail(
+                AuthErrorCode.InvalidPassword,
+                "비밀번호를 입력해야 합니다.");
         }
 
         if (request.DeviceCode <= 0)
@@ -654,9 +683,9 @@ public class ViewerAuthService
                 "장비 코드가 올바르지 않습니다.");
         }
 
-        var store = await _storeRepository.GetByLoginIdAsync(
-            request.StoreCode,
-            request.StoreId.Trim());
+        var storeId = request.StoreId.Trim();
+
+        var store = await _storeRepository.GetByLoginIdAsync(storeId);
 
         if (store == null)
         {
@@ -693,7 +722,7 @@ public class ViewerAuthService
                     "장비 정보를 찾을 수 없습니다.");
             }
 
-            if (device.DevStore != request.StoreCode ||
+            if (device.DevStore != store.StoreCode ||
                 device.DevAppType != (int)DeviceAppType.Viewer)
             {
                 transaction.Rollback();
@@ -713,7 +742,7 @@ public class ViewerAuthService
                 transaction,
                 CreateAuthLog(
                     AuthRequestType.ViewerDeviceRelease,
-                    request.StoreCode,
+                    store.StoreCode,
                     AuthResult.Success,
                     AuthErrorCode.None,
                     requestIp,
@@ -744,18 +773,19 @@ public class ViewerAuthService
     }
 
     /// <summary>
-    /// 현재 사용 가능한 활성 계약을 조회한다.
+    /// 현재 사용 가능한 캠뷰어 활성 계약을 조회한다.
     /// 
-    /// 여러 활성 계약이 있을 수 있으므로 현재 날짜 기준으로 유효한 계약 중
-    /// 가장 최신 계약을 선택한다.
+    /// 캠뷰어 로그인에서는 PC CAM 수량이 아니라
+    /// con_view 값이 1 이상인 계약만 사용 가능하다.
     /// </summary>
-    private async Task<Contract?> GetValidActiveContractAsync(int storeCode)
+    private async Task<Contract?> GetValidActiveViewerContractAsync(int storeCode)
     {
         var contracts = await _contractRepository.GetActiveContractsByStoreAsync(storeCode);
         var today = DateTime.Today;
 
         return contracts
             .Where(c => c.Status == (int)ContractStatus.Active)
+            .Where(c => c.ConView > 0)
             .Where(c => c.ConStart.Date <= today)
             .Where(c => c.ConEnd == null || c.ConEnd.Value.Date >= today)
             .OrderByDescending(c => c.ConStart)
@@ -855,13 +885,6 @@ public class ViewerAuthService
     public async Task<ApiResponse<List<DeviceSummaryDto>>> GetViewerDevicesWithLoginAsync(
         ViewerDeviceListRequest request)
     {
-        if (request.StoreCode <= 0)
-        {
-            return ApiResponse<List<DeviceSummaryDto>>.Fail(
-                AuthErrorCode.InvalidStore,
-                "매장 코드가 올바르지 않습니다.");
-        }
-
         if (string.IsNullOrWhiteSpace(request.StoreId))
         {
             return ApiResponse<List<DeviceSummaryDto>>.Fail(
@@ -876,9 +899,9 @@ public class ViewerAuthService
                 "비밀번호를 입력해야 합니다.");
         }
 
-        var store = await _storeRepository.GetByLoginIdAsync(
-            request.StoreCode,
-            request.StoreId.Trim());
+        var storeId = request.StoreId.Trim();
+
+        var store = await _storeRepository.GetByLoginIdAsync(storeId);
 
         if (store == null)
         {
