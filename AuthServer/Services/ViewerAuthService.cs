@@ -676,12 +676,6 @@ public class ViewerAuthService
                 "비밀번호를 입력해야 합니다.");
         }
 
-        if (request.DeviceCode <= 0)
-        {
-            return ApiResponse<ViewerDeviceReleaseResponse>.Fail(
-                AuthErrorCode.DeviceNotFound,
-                "장비 코드가 올바르지 않습니다.");
-        }
 
         var storeId = request.StoreId.Trim();
 
