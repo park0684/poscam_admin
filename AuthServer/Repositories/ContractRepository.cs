@@ -19,14 +19,29 @@ public class ContractRepository : RepositoryBase
     }
 
     /// <summary>
-    /// 계약 코드로 계약을 조회한다.
+    /// 계약 코드로 계약 정보를 조회한다.
+    /// 
+    /// 캠뷰어 토큰 검증 시 계약의 매장, 캠뷰어 수량,
+    /// 계약 상태, 계약 기간을 검증하므로 관련 컬럼을 모두 매핑한다.
     /// </summary>
     public async Task<Contract?> GetByCodeAsync(int contractCode)
     {
         const string sql = @"
-        SELECT con_code AS ConCode,con_store AS ConStore, con_partner AS ConPartner, con_no AS ConNo,con_type AS ConType,con_pcc AS ConPcc,con_view AS ConView,con_start AS ConStart, " +
-        "con_end AS ConEnd,con_status AS Status,con_rdate AS ConRDate,con_udate AS ConUDate " +
-        " FROM contracts WHERE con_code = @ContractCode;";
+        SELECT
+            con_code AS ConCode,
+            con_store AS ConStore,
+            con_type AS ConType,
+            con_pcc AS ConPcc,
+            con_view AS ConView,
+            con_start AS ConStart,
+            con_end AS ConEnd,
+            con_status AS Status,
+            con_rdate AS ConIDate,
+            con_udate AS ConUDate
+        FROM contracts
+        WHERE con_code = @ContractCode
+        LIMIT 1;
+    ";
 
         return await WithConnectionAsync(conn =>
             conn.QueryFirstOrDefaultAsync<Contract>(
@@ -67,34 +82,35 @@ public class ContractRepository : RepositoryBase
     }
 
     /// <summary>
-    /// 매장 기준 활성 계약 목록을 조회한다.
+    /// 매장 기준 계약 목록을 조회한다.
     /// 
-    /// 여러 계약이 존재할 수 있으므로 List로 반환한다.
-    /// 실제 어떤 계약을 사용할지는 Service에서 판단한다.
+    /// 캠뷰어 로그인에서는 서비스 계층에서
+    /// 계약 상태, 캠뷰어 수량, 계약 기간을 판단하므로
+    /// Repository에서는 해당 매장의 계약 정보를 충분히 넓게 조회한다.
     /// </summary>
     public async Task<List<Contract>> GetActiveContractsByStoreAsync(int storeCode)
     {
         const string sql = @"
         SELECT
-            con_code  AS ConCode,
+            con_code AS ConCode,
             con_store AS ConStore,
-            con_no    AS ConNo,
-            con_type  AS ConType,
-            con_pcc   AS ConPcc,
-            con_view  AS ConView,
+            con_type AS ConType,
+            con_pcc AS ConPcc,
+            con_view AS ConView,
             con_start AS ConStart,
-            con_end   AS ConEnd,
-            con_status    AS Status,
-            con_rdate AS ConRDate,
+            con_end AS ConEnd,
+            con_status AS Status,
+            con_rdate AS ConIDate,
             con_udate AS ConUDate
         FROM contracts
         WHERE con_store = @StoreCode
-          AND con_status = 1
         ORDER BY con_start DESC, con_code DESC;
-        ";
+    ";
 
         var result = await WithConnectionAsync(conn =>
-            conn.QueryAsync<Contract>(sql, new { StoreCode = storeCode }));
+            conn.QueryAsync<Contract>(
+                sql,
+                new { StoreCode = storeCode }));
 
         return result.ToList();
     }
