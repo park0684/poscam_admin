@@ -109,7 +109,8 @@ public class ConfigManageService
 
     private async Task<bool> CanAccessStoreAsync(int storeCode, UserAccount loginUser)
     {
-        if (loginUser.UserRole == (int)UserRole.Admin)
+        if (loginUser.UserRole == (int)UserRole.System ||
+            loginUser.UserRole == (int)UserRole.Admin)
         {
             return true;
         }

@@ -222,8 +222,9 @@ public class DeviceService
         Device device,
         UserAccount loginUser)
     {
-        // 1. 관리자는 전체 장비 초기화 가능
-        if (loginUser.UserRole == (int)UserRole.Admin)
+        // 1. 시스템 관리자 및 관리자는 전체 장비 초기화 가능
+        if (loginUser.UserRole == (int)UserRole.System ||
+    loginUser.UserRole == (int)UserRole.Admin)
         {
             return true;
         }

@@ -224,7 +224,8 @@ public class ContractManageService
 
         return await UpdateContractAsync(
             request,
-            primaryPartnerCode.Value);
+            primaryPartnerCode.Value,
+            loginUser);
     }
 
     /// <summary>
@@ -305,7 +306,9 @@ public class ContractManageService
     /// 계약번호와 매장 코드는 유지한다.
     /// </summary>
     private async Task<ApiResponse<ContractSaveResponse>> UpdateContractAsync(
-        ContractSaveRequest request, int primaryPartnerCode)
+        ContractSaveRequest request,
+        int primaryPartnerCode,
+        UserAccount loginUser)
     {
         var existing = await _contractRepository.GetByCodeAsync(request.ContractCode!.Value);
 
@@ -325,12 +328,20 @@ public class ContractManageService
 
         // 계약이 속한 파트너사와 현재 매장의 대표 담당 파트너사가 같아야 함
         // 2026-05-15 계약 수정 시에도 매장의 대표 담당 파트너사와 일치하는지 확인한다.
-        if (existing.ConPartner != primaryPartnerCode)
+
+        var isSystemOrAdmin =
+            loginUser.UserRole == (int)UserRole.System ||
+            loginUser.UserRole == (int)UserRole.Admin;
+
+        if (!isSystemOrAdmin && existing.ConPartner != primaryPartnerCode)
         {
             return ApiResponse<ContractSaveResponse>.Fail(
                 AuthErrorCode.InvalidStore,
                 "계약의 파트너사 정보와 매장의 담당 파트너사가 일치하지 않습니다.");
         }
+
+        // System/Admin은 현재 매장의 대표 파트너 기준으로 계약 소유 파트너를 보정
+        existing.ConPartner = primaryPartnerCode;
 
         var startDate = request.StartDate?.Date ?? existing.ConStart.Date;
         var endDateResult = ResolveEndDate(request.ContractType, startDate, request.EndDate);

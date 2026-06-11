@@ -215,7 +215,6 @@ WHERE con_code = @ContractCode;
         const string sql = @"
         UPDATE contracts
         SET
-            con_type = @ConType,
             con_pcc = @ConPcc,
             con_view = @ConView,
             con_start = @ConStart,
