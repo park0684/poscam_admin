@@ -87,7 +87,7 @@ public class AccountTokenService
         if (parts.Length != 2)
         {
             return AccountTokenValidationResult.Fail(
-                AuthErrorCode.InvalidLogin,
+                AuthErrorCode.TokenInvalid,
                 "토큰 형식이 올바르지 않습니다.");
         }
 
@@ -99,7 +99,7 @@ public class AccountTokenService
         if (!FixedTimeEquals(signatureBase64, expectedSignature))
         {
             return AccountTokenValidationResult.Fail(
-                AuthErrorCode.InvalidLogin,
+                AuthErrorCode.TokenInvalid,
                 "토큰 서명이 올바르지 않습니다.");
         }
 
@@ -113,21 +113,21 @@ public class AccountTokenService
         catch
         {
             return AccountTokenValidationResult.Fail(
-                AuthErrorCode.InvalidLogin,
+                AuthErrorCode.TokenInvalid,
                 "토큰 내용을 읽을 수 없습니다.");
         }
 
         if (payload == null)
         {
             return AccountTokenValidationResult.Fail(
-                AuthErrorCode.InvalidLogin,
+                AuthErrorCode.TokenInvalid,
                 "토큰 정보가 비어 있습니다.");
         }
 
         if (payload.ExpiresAt < DateTime.UtcNow)
         {
             return AccountTokenValidationResult.Fail(
-                AuthErrorCode.ContractExpired,
+                AuthErrorCode.TokenExpired,
                 "토큰이 만료되었습니다.");
         }
 

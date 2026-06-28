@@ -3,6 +3,7 @@ using poscam.AuthServer.Models.Dtos.Account;
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Entities;
 using poscam.AuthServer.Models.Enums;
+using poscam.AuthServer.Repositories;
 using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
@@ -17,10 +18,15 @@ namespace poscam.AuthServer.Controllers;
 public class AccountController : ControllerBase
 {
     private readonly AccountService _accountService;
+    private readonly CurrentUserAccessService _currentUserAccessService;
 
-    public AccountController(AccountService accountService)
+    public AccountController(
+        AccountService accountService,
+        AdminUserPermissionRepository adminUserPermissionRepository)
     {
         _accountService = accountService;
+        _currentUserAccessService = new CurrentUserAccessService(
+            adminUserPermissionRepository);
     }
 
     /// <summary>
@@ -48,6 +54,54 @@ public class AccountController : ControllerBase
         [FromBody] UserLoginRequest request)
     {
         var result = await _accountService.LoginAsync(request);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// 현재 로그인 사용자의 역할과 관리자 세부 권한을 조회한다.
+    /// 자신의 접근정보 조회이므로 별도 관리자 권한을 요구하지 않는다.
+    /// </summary>
+    [HttpGet("api/accounts/me/access")]
+    [ProducesResponseType(typeof(ApiResponse<CurrentUserAccessResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<CurrentUserAccessResponse>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<CurrentUserAccessResponse>), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ApiResponse<CurrentUserAccessResponse>>> GetCurrentAccess()
+    {
+        ApiResponse<UserAccount> loginUserResult;
+
+        try
+        {
+            loginUserResult = await GetLoginUserAsync();
+        }
+        catch
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                ApiResponse<CurrentUserAccessResponse>.Fail(
+                    AuthErrorCode.DatabaseError,
+                    "현재 사용자 정보를 조회하는 중 데이터베이스 오류가 발생했습니다."));
+        }
+
+        if (!loginUserResult.Success || loginUserResult.Data == null)
+        {
+            return Unauthorized(ApiResponse<CurrentUserAccessResponse>.Fail(
+                loginUserResult.ErrorCode,
+                loginUserResult.Message));
+        }
+
+        var result = await _currentUserAccessService.GetCurrentAccessAsync(
+            loginUserResult.Data);
+
+        if (!result.Success)
+        {
+            if (result.ErrorCode == AuthErrorCode.DatabaseError)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, result);
+            }
+
+            return Unauthorized(result);
+        }
+
         return Ok(result);
     }
 

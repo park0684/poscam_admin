@@ -8,11 +8,19 @@ namespace poscam.AuthServer.Options;
 /// </summary>
 public sealed class AuthPolicyOptions
 {
+    public const string InternalServiceKeyPlaceholder = "SET_VIA_AUTH_POLICY_INTERNAL_SERVICE_KEY";
+
     /// <summary>
     /// 인증 토큰 서명에 사용할 서버 비밀키.
     /// 운영 환경에서는 반드시 충분히 긴 난수 문자열을 사용해야 한다.
     /// </summary>
-    public string TokenSecret { get; set; } = "CHANGE_ME_POSCAM_AUTH_SECRET_KEY";
+    public string TokenSecret { get; set; } = "SET_VIA_AUTH_POLICY_TOKEN_SECRET";
+
+    /// <summary>
+    /// UpdateServer가 내부 권한 API를 호출할 때 사용할 서비스 키.
+    /// 실제 값은 AuthPolicy__InternalServiceKey 환경변수로 주입한다.
+    /// </summary>
+    public string InternalServiceKey { get; set; } = InternalServiceKeyPlaceholder;
 
     /// <summary>
     /// 일반 인증 토큰 만료 시간.

@@ -32,7 +32,7 @@ public class AccountTokenPayloadDto
 
     /// <summary>
     /// 사용자 권한.
-    /// 1 = 관리자, 2 = 담당자.
+    /// 0 = 시스템, 1 = 관리자, 2 = 파트너 담당자.
     /// </summary>
     public int UserRole { get; set; }
 

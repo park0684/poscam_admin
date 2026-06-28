@@ -61,5 +61,10 @@ public enum AdminPermissionType
     /// <summary>
     /// 라이선스 발급/폐기/복구 권한.
     /// </summary>
-    LicenseManage = 11
+    LicenseManage = 11,
+
+    /// <summary>
+    /// 프로그램 릴리스 등록, 패키지 업로드, 게시 및 배포 중지 권한.
+    /// </summary>
+    UpdateManage = 12
 }

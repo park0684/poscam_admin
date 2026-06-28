@@ -14,7 +14,7 @@ namespace poscam.AuthServer.Repositories;
 /// - apu_user: users.user_code
 /// - apu_permission: AdminPermissionType의 int 값
 /// </summary>
-public class AdminUserPermissionRepository : RepositoryBase
+public class AdminUserPermissionRepository : RepositoryBase, IAdminUserPermissionReader
 {
     public AdminUserPermissionRepository(IDbContext dbContext)
         : base(dbContext)
