@@ -11,6 +11,7 @@
 ## 기준 저장소와 브랜치
 
 - 저장소: `park0684/poscam_admin`
+- 로컬 경로: `D:\_work\poscam`
 - 브랜치: `feature/update-server-auth-contract`
 - AuthServer 선행 작업: A00~A05 Completed
 - UpdateServer 선행 작업: B00~B10 Completed
@@ -542,7 +543,7 @@ codex/WORK_STATUS.md
 실행 명령:
 
 ```powershell
-cd D:\_work\poscam_admin
+cd D:\_work\poscam
 git switch feature/update-server-auth-contract
 git pull
 dotnet build poscam.sln -c Release
