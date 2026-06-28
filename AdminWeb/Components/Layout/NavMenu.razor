@@ -1,7 +1,10 @@
-﻿@using poscam.AdminWeb.Models.Navigation
+﻿@using poscam.AdminWeb.Models.Account
+@using poscam.AdminWeb.Models.Navigation
 @using poscam.AdminWeb.Services
 @inject NavigationManager NavigationManager
 @inject AuthStateService AuthStateService
+@inject CurrentUserAccessService CurrentUserAccessService
+@inject MenuAccessFilter MenuAccessFilter
 
 <div class="nav-scrollable poscam-side-menu">
 
@@ -141,9 +144,42 @@
 
     protected override void OnInitialized()
     {
-        _menus = MenuConfiguration.GetMenus()
-            .OrderBy(x => x.Order)
-            .ToList();
+        // sessionStorage와 JS Interop을 사용할 수 없는 초기 렌더에서는
+        // 권한이 필요 없는 기존 메뉴만 표시하고 업데이트 메뉴는 숨긴다.
+        ApplyMenuFilter(access: null);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var result = await CurrentUserAccessService.GetCurrentAccessAsync();
+
+        if (result.Status == CurrentUserAccessStatus.Unauthenticated)
+        {
+            CurrentUserAccessService.Invalidate();
+            await AuthStateService.ClearAsync();
+            NavigationManager.NavigateTo(
+                "/login",
+                forceLoad: true,
+                replace: true);
+            return;
+        }
+
+        // 403 또는 조회 장애는 로그인 상태를 유지하되 fail-closed로
+        // 업데이트 메뉴를 표시하지 않는다.
+        ApplyMenuFilter(result.Success ? result.Data : null);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyMenuFilter(CurrentUserAccessResponse? access)
+    {
+        _menus = MenuAccessFilter.Filter(
+            MenuConfiguration.GetMenus(),
+            access);
     }
 
     private bool IsMenuOpen(MenuItem menu)
@@ -157,10 +193,10 @@
 
     private async Task LogoutAsync()
     {
-        // 저장된 로그인 상태 제거
+        // 접근정보 권한 캐시와 저장된 로그인 상태를 함께 제거한다.
+        CurrentUserAccessService.Invalidate();
         await AuthStateService.ClearAsync();
 
-        // 로그인 페이지로 이동
         NavigationManager.NavigateTo("/login", forceLoad: true, replace: true);
     }
 }
