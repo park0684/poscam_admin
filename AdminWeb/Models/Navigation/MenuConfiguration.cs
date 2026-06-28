@@ -109,7 +109,51 @@ public static class MenuConfiguration
                         Order = 1
                     }
                 }
-}
+            },
+            new MenuItem
+            {
+                Key = "updates",
+                Title = "업데이트관리",
+                Order = 50,
+                Roles = new List<int>
+                {
+                    CurrentUserAccessPolicy.SystemRole,
+                    CurrentUserAccessPolicy.AdminRole
+                },
+                RequiredPermissionCode =
+                    CurrentUserAccessPolicy.UpdateManagePermissionCode,
+                Children = new List<MenuItem>
+                {
+                    new MenuItem
+                    {
+                        Key = "update-releases",
+                        Title = "릴리스 관리",
+                        Url = "updates/releases",
+                        Order = 1,
+                        Roles = new List<int>
+                        {
+                            CurrentUserAccessPolicy.SystemRole,
+                            CurrentUserAccessPolicy.AdminRole
+                        },
+                        RequiredPermissionCode =
+                            CurrentUserAccessPolicy.UpdateManagePermissionCode
+                    },
+                    new MenuItem
+                    {
+                        Key = "update-audit-logs",
+                        Title = "감사 로그",
+                        Url = "updates/audit-logs",
+                        Order = 2,
+                        Roles = new List<int>
+                        {
+                            CurrentUserAccessPolicy.SystemRole,
+                            CurrentUserAccessPolicy.AdminRole
+                        },
+                        RequiredPermissionCode =
+                            CurrentUserAccessPolicy.UpdateManagePermissionCode
+                    }
+                }
+            }
         };
     }
 }
