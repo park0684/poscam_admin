@@ -8,8 +8,8 @@
 | A03 | 현재 접근정보 API | Completed | Release 성공 (경고 0, 오류 0) | 7개 통과 | 접근정보 DTO·Controller·Service·Repository 계약·테스트, WORK_STATUS | 자기조회, 역할별 권한, 401/500 반영 |
 | A04 | 내부 권한 API | Completed | Release 성공 (경고 0, 오류 0) | 14개 통과 | 서비스 키 설정, 내부 권한 Controller·Actor DTO·Helper·테스트, 운영 Secret 문서, WORK_STATUS | 키·Bearer 401, 권한 403, UpdateManage 고정 |
 | A05 | AuthServer 검증 | Completed | Release 성공 (경고 0, 오류 0) | 25개 통과 | 위변조 토큰 결함 수정, 내부 API·계약 검증 테스트, WORK_STATUS | Secret 검색 이상 없음, B05 선행 가능 |
-| C00 | AdminWeb 분석 | Pending | - | - | - | B10 이후 |
-| C01 | 접근정보·메뉴 | Pending | - | - | - | - |
+| C00 | AdminWeb 분석 | InProgress | 로컬 검증 필요 | 코드 테스트 없음 | codex/reports/C00_ADMINWEB_ANALYSIS.md, WORK_STATUS | 분석 완료, 코드 변경 없음, Release 빌드 확인 후 Completed |
+| C01 | 접근정보·메뉴 | Pending | - | - | - | C00 완료 후 |
 | C02 | 릴리스 화면 | Pending | - | - | - | - |
 | C03 | 직접 업로드 | Pending | - | - | - | - |
 | C04 | 감사·오류 | Pending | - | - | - | - |
