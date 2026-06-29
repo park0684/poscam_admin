@@ -1,0 +1,390 @@
+@page "/updates/releases"
+@rendermode InteractiveServer
+@using System.Globalization
+@using poscam.AdminWeb.Models.Updates
+@using poscam.AdminWeb.Services
+@inject UpdateApiClient UpdateApiClient
+@inject CurrentUserAccessService CurrentUserAccessService
+@inject AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+
+<PageTitle>릴리스 관리</PageTitle>
+
+<UpdateManagementGuard OnAuthorized="LoadInitialAsync">
+    @if (_accessDenied)
+    {
+        <div class="alert alert-warning">업데이트 관리 권한이 없습니다.</div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h3 class="mb-1">릴리스 관리</h3>
+                <div class="text-muted">제품별 업데이트 릴리스를 등록하고 상태를 관리합니다.</div>
+            </div>
+            <button type="button"
+                    class="btn btn-primary"
+                    @onclick="CreateRelease">
+                신규 릴리스
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")">
+                @_message
+            </div>
+        }
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">제품</label>
+                        <select class="form-select" @bind="_filter.ProductCode">
+                            <option value="">전체</option>
+                            @foreach (var product in _products)
+                            {
+                                <option value="@product.ProductCode">
+                                    @product.ProductName (@product.ProductCode)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">채널</label>
+                        <select class="form-select" @bind="_filter.Channel">
+                            <option value="">전체</option>
+                            @foreach (var channel in ReleaseChannels.All)
+                            {
+                                <option value="@channel">@channel</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">상태</label>
+                        <select class="form-select" @bind="_statusFilter">
+                            <option value="">전체</option>
+                            <option value="0">Draft</option>
+                            <option value="1">Published</option>
+                            <option value="9">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">검색어</label>
+                        <input class="form-control"
+                               maxlength="100"
+                               @bind="_filter.Keyword"
+                               @bind:event="oninput"
+                               placeholder="버전, 메모, 등록자" />
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="button"
+                                class="btn btn-outline-primary"
+                                disabled="@_isLoading"
+                                @onclick="SearchAsync">
+                            조회
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body p-0">
+                @if (_isLoading)
+                {
+                    <div class="p-4 text-center text-muted">릴리스 목록을 불러오는 중입니다.</div>
+                }
+                else if (_page.Items.Count == 0)
+                {
+                    <div class="p-4 text-center text-muted">조회된 릴리스가 없습니다.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>제품</th>
+                                    <th>버전</th>
+                                    <th>채널</th>
+                                    <th>강제 정책</th>
+                                    <th>상태</th>
+                                    <th>게시일시</th>
+                                    <th>등록자</th>
+                                    <th>등록일시</th>
+                                    <th class="text-end">관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _page.Items)
+                                {
+                                    <tr>
+                                        <td>@item.ProductCode</td>
+                                        <td class="fw-semibold">@item.Version</td>
+                                        <td>@item.Channel</td>
+                                        <td>@GetMandatoryText(item)</td>
+                                        <td>
+                                            <span class="badge @GetStatusBadge(item.Status)">
+                                                @GetStatusName(item)
+                                            </span>
+                                        </td>
+                                        <td>@FormatDateTime(item.PublishedAt)</td>
+                                        <td>@(item.CreatedByUserName ?? "-")</td>
+                                        <td>@FormatDateTime(item.CreatedAt)</td>
+                                        <td class="text-end">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => OpenDetail(item.ReleaseCode)">
+                                                상세
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted">
+                총 @_page.TotalCount.ToString("N0")건
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm"
+                        style="width: auto;"
+                        value="@_filter.PageSize"
+                        @onchange="ChangePageSizeAsync">
+                    <option value="10">10개</option>
+                    <option value="20">20개</option>
+                    <option value="50">50개</option>
+                    <option value="100">100개</option>
+                </select>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        disabled="@(_isLoading || _page.Page <= 1)"
+                        @onclick="PreviousPageAsync">
+                    이전
+                </button>
+                <span>@(_page.TotalPages == 0 ? 0 : _page.Page) / @_page.TotalPages</span>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        disabled="@(_isLoading || _page.Page >= _page.TotalPages)"
+                        @onclick="NextPageAsync">
+                    다음
+                </button>
+            </div>
+        </div>
+    }
+</UpdateManagementGuard>
+
+@code {
+    private readonly ReleaseListRequest _filter = new();
+    private readonly List<ActiveProductResponse> _products = new();
+    private PagedResponse<ReleaseListItemResponse> _page = new();
+    private string _statusFilter = "";
+    private bool _isLoading;
+    private bool _accessDenied;
+    private bool _messageIsError;
+    private string _message = "";
+
+    private async Task LoadInitialAsync()
+    {
+        _isLoading = true;
+        _message = "";
+        await InvokeAsync(StateHasChanged);
+
+        var productsResult = await UpdateApiClient.GetAsync<List<ActiveProductResponse>>(
+            "api/v1/admin/products/active");
+
+        if (!productsResult.Success)
+        {
+            await HandleFailureAsync(productsResult);
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _products.Clear();
+        _products.AddRange(productsResult.Data ?? new List<ActiveProductResponse>());
+        await LoadReleasesAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _filter.Page = 1;
+        await LoadReleasesAsync();
+    }
+
+    private async Task LoadReleasesAsync()
+    {
+        _isLoading = true;
+        _message = "";
+        _messageIsError = false;
+        await InvokeAsync(StateHasChanged);
+
+        _filter.Status = int.TryParse(_statusFilter, out var status)
+            ? status
+            : null;
+
+        var result = await UpdateApiClient.GetAsync<PagedResponse<ReleaseListItemResponse>>(
+            BuildListUrl());
+
+        if (result.Success && result.Data is not null)
+        {
+            _page = result.Data;
+        }
+        else
+        {
+            await HandleFailureAsync(result);
+        }
+
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string BuildListUrl()
+    {
+        var query = new List<string>
+        {
+            $"page={_filter.Page}",
+            $"pageSize={_filter.PageSize}"
+        };
+
+        AddQuery(query, "productCode", _filter.ProductCode);
+        AddQuery(query, "channel", _filter.Channel);
+        AddQuery(query, "keyword", _filter.Keyword);
+
+        if (_filter.Status.HasValue)
+        {
+            query.Add($"status={_filter.Status.Value}");
+        }
+
+        return $"api/v1/admin/releases?{string.Join("&", query)}";
+    }
+
+    private static void AddQuery(
+        ICollection<string> query,
+        string name,
+        string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query.Add($"{name}={Uri.EscapeDataString(value.Trim())}");
+        }
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (_page.Page <= 1)
+        {
+            return;
+        }
+
+        _filter.Page = _page.Page - 1;
+        await LoadReleasesAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (_page.Page >= _page.TotalPages)
+        {
+            return;
+        }
+
+        _filter.Page = _page.Page + 1;
+        await LoadReleasesAsync();
+    }
+
+    private async Task ChangePageSizeAsync(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var pageSize))
+        {
+            _filter.PageSize = pageSize;
+            _filter.Page = 1;
+            await LoadReleasesAsync();
+        }
+    }
+
+    private async Task HandleFailureAsync<T>(UpdateApiCallResult<T> result)
+    {
+        if (result.IsUnauthorized)
+        {
+            CurrentUserAccessService.Invalidate();
+            await AuthStateService.ClearAsync();
+            NavigationManager.NavigateTo("/login", forceLoad: true, replace: true);
+            return;
+        }
+
+        if (result.IsForbidden)
+        {
+            CurrentUserAccessService.Invalidate();
+            _accessDenied = true;
+            _page = new PagedResponse<ReleaseListItemResponse>();
+            return;
+        }
+
+        _messageIsError = true;
+        _message = result.IsServiceUnavailable
+            ? "관리자 권한 확인 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."
+            : string.IsNullOrWhiteSpace(result.Message)
+                ? "릴리스 목록을 조회하지 못했습니다."
+                : result.Message;
+    }
+
+    private void CreateRelease()
+    {
+        NavigationManager.NavigateTo("/updates/releases/new");
+    }
+
+    private void OpenDetail(long releaseCode)
+    {
+        NavigationManager.NavigateTo($"/updates/releases/{releaseCode}");
+    }
+
+    private static string GetMandatoryText(ReleaseListItemResponse item)
+    {
+        if (item.IsMandatory)
+        {
+            return "전체 강제";
+        }
+
+        return string.IsNullOrWhiteSpace(item.ForceUpdateBelowVersion)
+            ? "선택"
+            : $"{item.ForceUpdateBelowVersion} 미만 강제";
+    }
+
+    private static string GetStatusName(ReleaseListItemResponse item)
+    {
+        return string.IsNullOrWhiteSpace(item.StatusName)
+            ? item.Status switch
+            {
+                ReleaseStatusCodes.Draft => "Draft",
+                ReleaseStatusCodes.Published => "Published",
+                ReleaseStatusCodes.Disabled => "Disabled",
+                _ => item.Status.ToString(CultureInfo.InvariantCulture)
+            }
+            : item.StatusName;
+    }
+
+    private static string GetStatusBadge(int status)
+    {
+        return status switch
+        {
+            ReleaseStatusCodes.Draft => "text-bg-secondary",
+            ReleaseStatusCodes.Published => "text-bg-success",
+            ReleaseStatusCodes.Disabled => "text-bg-dark",
+            _ => "text-bg-light"
+        };
+    }
+
+    private static string FormatDateTime(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : "-";
+    }
+}
