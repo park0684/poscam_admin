@@ -14,7 +14,9 @@ public class MenuAccessFilterTests
     {
         var menus = Filter(CreateAccess(CurrentUserAccessPolicy.SystemRole));
 
-        var updateMenu = Assert.Single(menus.Where(menu => menu.Key == "updates"));
+        var updateMenu = Assert.Single(
+            menus,
+            menu => menu.Key == "updates");
         Assert.Equal(2, updateMenu.Children.Count);
         Assert.Contains(updateMenu.Children, child => child.Url == "updates/releases");
         Assert.Contains(updateMenu.Children, child => child.Url == "updates/audit-logs");
