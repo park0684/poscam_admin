@@ -105,16 +105,22 @@ public static class ArtifactUploadUiPolicy
             throw new ArgumentOutOfRangeException(nameof(releaseCode));
         }
 
-        if (!Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var uri)
+        var normalizedBaseUrl = publicBaseUrl?.Trim() ?? "";
+
+        if (!Uri.TryCreate(normalizedBaseUrl, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp
-                && uri.Scheme != Uri.UriSchemeHttps))
+                && uri.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
         {
             throw new ArgumentException(
-                "PublicBaseUrl은 유효한 HTTP 또는 HTTPS 절대 URL이어야 합니다.",
+                "PublicBaseUrl은 사용자정보·Query·Fragment가 없는 유효한 HTTP 또는 HTTPS 절대 URL이어야 합니다.",
                 nameof(publicBaseUrl));
         }
 
-        return $"{publicBaseUrl.TrimEnd('/')}/api/v1/admin/releases/{releaseCode}/artifacts";
+        return $"{normalizedBaseUrl.TrimEnd('/')}/api/v1/admin/releases/{releaseCode}/artifacts";
     }
 
     public static bool HasActiveTarget(
