@@ -2,13 +2,15 @@
 
 ## 작업 결과
 
-- 상태: InProgress
+- 상태: Completed
 - UpdateServer 전용 설정·Client: 구현 완료
 - 직접 URL 권한 Guard: 구현 완료
 - 릴리스 목록·신규·상세 화면: 구현 완료
 - 상태별 수정·게시·중지 UI: 구현 완료
 - Client·UI 정책 테스트: 추가 완료
-- 로컬 Release 빌드·전체 테스트: 확인 필요
+- 로컬 Release 빌드: 성공, 오류 0
+- 빌드 경고: 기존 AdminWeb 미사용 필드 경고 6개, C02 신규 경고 0
+- 전체 테스트: 64/64 성공, 실패 0, 건너뜀 0
 
 ## 기준 환경
 
@@ -94,6 +96,8 @@
 
 - `AdminWeb.Tests/Services/UpdateApiClientTests.cs`
 - `AdminWeb.Tests/Updates/ReleaseUiPolicyTests.cs`
+- `AdminWeb.Tests/Navigation/MenuAccessFilterTests.cs`
+  - xUnit2031 분석 경고 제거
 
 ## API 연결
 
@@ -200,11 +204,13 @@ C02에서는 다음을 구현하지 않았다.
 - 잘못된 버전 형식 거부
 - 요청 문자열 정규화
 
-C01 AdminWeb.Tests 19개 + C02 20개 = AdminWeb.Tests 예상 39개
+C01 AdminWeb.Tests 19개 + C02 20개 = AdminWeb.Tests 39개
 
-AuthServer.Tests 25개를 포함한 예상 전체 테스트 수: 64개
+AuthServer.Tests 25개를 포함한 전체 테스트 수: 64개
 
-## 검증 명령
+## 검증 결과
+
+실행 명령:
 
 ```powershell
 cd D:\_work\poscam
@@ -217,7 +223,7 @@ dotnet build poscam.sln -c Release
 dotnet test poscam.sln -c Release --no-build
 ```
 
-## 검증 기준
+결과:
 
 - Restore 성공
 - AuthServer Release 빌드 성공
@@ -225,7 +231,8 @@ dotnet test poscam.sln -c Release --no-build
 - AuthServer.Tests Release 빌드 성공
 - AdminWeb.Tests Release 빌드 성공
 - 컴파일 오류 0
-- 새 경고 0
+- 기존 AdminWeb 미사용 필드 경고 6개
+- C02 신규 경고 0
 - AdminWeb.Tests 39/39 성공
 - AuthServer.Tests 25/25 성공
 - 전체 64/64 성공
@@ -234,11 +241,12 @@ dotnet test poscam.sln -c Release --no-build
 
 ## 남은 문제
 
-- 컴파일 오류: 로컬 검증 필요
-- 실제 동작 오류: UpdateServer와 실제 DB 연결 후 C05에서 통합 검증
+- 컴파일 오류: 없음
+- 실제 동작 오류: 자동 테스트에서 발견 없음
+- 실제 UpdateServer·DB 연동 화면 검증: C05 범위
 - Artifact 직접 업로드: C03 범위
 - 감사 로그·공통 오류 Handler: C04 범위
-- 다음 단계 선행조건: Release 빌드와 전체 테스트 성공 후 C03 시작
+- 다음 단계 선행조건: 충족, C03 시작 가능
 
 ## 정책 이탈 여부
 
