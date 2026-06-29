@@ -1,0 +1,482 @@
+@page "/updates/releases/{ReleaseCode:long}"
+@rendermode InteractiveServer
+@using System.Globalization
+@using poscam.AdminWeb.Models.Updates
+@using poscam.AdminWeb.Services
+@inject UpdateApiClient UpdateApiClient
+@inject CurrentUserAccessService CurrentUserAccessService
+@inject AuthStateService AuthStateService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<PageTitle>릴리스 상세</PageTitle>
+
+<UpdateManagementGuard OnAuthorized="LoadAsync">
+    @if (_accessDenied)
+    {
+        <div class="alert alert-warning">업데이트 관리 권한이 없습니다.</div>
+    }
+    else if (_notFound)
+    {
+        <div class="alert alert-warning">요청한 릴리스를 찾을 수 없습니다.</div>
+        <button type="button" class="btn btn-outline-secondary" @onclick="BackToList">목록</button>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h3 class="mb-1">릴리스 상세</h3>
+                @if (_detail is not null)
+                {
+                    <div class="text-muted">
+                        #@_detail.ReleaseCode · @_detail.ProductCode · @_detail.Version · @_detail.Channel
+                    </div>
+                }
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        @onclick="BackToList">
+                    목록
+                </button>
+                @if (IsDraft)
+                {
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            disabled="@_isBusy"
+                            @onclick="DeleteAsync">
+                        Draft 삭제
+                    </button>
+                    <button type="button"
+                            class="btn btn-success"
+                            disabled="@(_isBusy || _detail!.Artifacts.Count == 0)"
+                            title="@(_detail!.Artifacts.Count == 0 ? "게시하려면 활성 Artifact가 필요합니다." : null)"
+                            @onclick="PublishAsync">
+                        게시
+                    </button>
+                }
+                else if (IsPublished)
+                {
+                    <button type="button"
+                            class="btn btn-warning"
+                            disabled="@_isBusy"
+                            @onclick="DisableAsync">
+                        배포 중지
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")">
+                @_message
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="card">
+                <div class="card-body text-muted">릴리스 정보를 불러오는 중입니다.</div>
+            </div>
+        }
+        else if (_detail is not null)
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>기본 정보</span>
+                    <span class="badge @GetStatusBadge(_detail.Status)">
+                        @GetStatusName(_detail)
+                    </span>
+                </div>
+                <div class="card-body">
+                    <ReleaseForm Model="_model"
+                                 Products="_products"
+                                 IsReadOnly="@(!IsDraft)"
+                                 IsBusy="_isBusy"
+                                 SubmitText="Draft 저장"
+                                 OnValidSubmit="SaveAsync" />
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">관리 정보</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <div class="text-muted small">등록자</div>
+                            <div>@(_detail.CreatedByUserName ?? "-")</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">등록일시</div>
+                            <div>@FormatDateTime(_detail.CreatedAt)</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">수정일시</div>
+                            <div>@FormatDateTime(_detail.UpdatedAt)</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-muted small">게시일시</div>
+                            <div>@FormatDateTime(_detail.PublishedAt)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Artifact</span>
+                    <span class="text-muted small">총 @_detail.Artifacts.Count개</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (_detail.Artifacts.Count == 0)
+                    {
+                        <div class="p-4 text-center text-muted">
+                            등록된 Artifact가 없습니다.
+                            @if (IsDraft)
+                            {
+                                <div class="small mt-1">브라우저 직접 업로드 기능은 C03 단계에서 연결됩니다.</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>OS</th>
+                                        <th>Architecture</th>
+                                        <th>Package</th>
+                                        <th>파일명</th>
+                                        <th>크기</th>
+                                        <th>SHA-256</th>
+                                        <th>상태</th>
+                                        <th>등록일시</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var artifact in _detail.Artifacts)
+                                    {
+                                        <tr>
+                                            <td>@artifact.Os</td>
+                                            <td>@artifact.Architecture</td>
+                                            <td>@artifact.PackageType</td>
+                                            <td>@artifact.FileName</td>
+                                            <td>@FormatFileSize(artifact.FileSize)</td>
+                                            <td><code title="@artifact.Sha256">@ShortenSha256(artifact.Sha256)</code></td>
+                                            <td>@(artifact.Status == 1 ? "Active" : "Disabled")</td>
+                                            <td>@FormatDateTime(artifact.CreatedAt)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</UpdateManagementGuard>
+
+@code {
+    [Parameter]
+    public long ReleaseCode { get; set; }
+
+    private readonly List<ActiveProductResponse> _products = new();
+    private ReleaseDetailResponse? _detail;
+    private ReleaseEditModel _model = new();
+    private bool _isLoading;
+    private bool _isBusy;
+    private bool _accessDenied;
+    private bool _notFound;
+    private bool _messageIsError;
+    private string _message = "";
+
+    private bool IsDraft => _detail?.Status == ReleaseStatusCodes.Draft;
+    private bool IsPublished => _detail?.Status == ReleaseStatusCodes.Published;
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _message = "";
+        _messageIsError = false;
+        await InvokeAsync(StateHasChanged);
+
+        var productResult = await UpdateApiClient.GetAsync<List<ActiveProductResponse>>(
+            "api/v1/admin/products/active");
+
+        if (!productResult.Success)
+        {
+            await HandleFailureAsync(productResult, "활성 제품 목록을 조회하지 못했습니다.");
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _products.Clear();
+        _products.AddRange(productResult.Data ?? new List<ActiveProductResponse>());
+        await ReloadDetailAsync();
+    }
+
+    private async Task ReloadDetailAsync()
+    {
+        var result = await UpdateApiClient.GetAsync<ReleaseDetailResponse>(
+            $"api/v1/admin/releases/{ReleaseCode}");
+
+        if (result.Success && result.Data is not null)
+        {
+            _detail = result.Data;
+            _detail.Artifacts ??= new List<ReleaseArtifactSummaryResponse>();
+            _model = ReleaseEditModel.FromDetail(_detail);
+            _notFound = false;
+        }
+        else
+        {
+            await HandleFailureAsync(result, "릴리스 상세정보를 조회하지 못했습니다.");
+        }
+
+        _isLoading = false;
+        _isBusy = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!IsDraft || _isBusy)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _message = "";
+        await InvokeAsync(StateHasChanged);
+
+        var result = await UpdateApiClient.PutAsync<
+            UpdateReleaseRequest,
+            ReleaseDetailResponse>(
+            $"api/v1/admin/releases/{ReleaseCode}",
+            _model.ToUpdateRequest());
+
+        if (result.Success && result.Data is not null)
+        {
+            _messageIsError = false;
+            _message = "Draft 릴리스를 저장했습니다.";
+            _detail = result.Data;
+            _detail.Artifacts ??= new List<ReleaseArtifactSummaryResponse>();
+            _model = ReleaseEditModel.FromDetail(_detail);
+            _isBusy = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await HandleFailureAsync(result, "Draft 릴리스를 저장하지 못했습니다.");
+        _isBusy = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!IsDraft || _isBusy)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            "Draft 릴리스와 연결된 Draft Artifact 정보를 삭제합니다. 계속하시겠습니까?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        await InvokeAsync(StateHasChanged);
+
+        var result = await UpdateApiClient.DeleteAsync<DeleteReleaseResponse>(
+            $"api/v1/admin/releases/{ReleaseCode}");
+
+        if (result.Success)
+        {
+            NavigationManager.NavigateTo("/updates/releases");
+            return;
+        }
+
+        await HandleFailureAsync(result, "Draft 릴리스를 삭제하지 못했습니다.");
+        _isBusy = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PublishAsync()
+    {
+        if (!IsDraft || _isBusy || _detail!.Artifacts.Count == 0)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            "게시 후에는 릴리스 핵심정보와 Artifact를 수정할 수 없습니다. 게시하시겠습니까?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await ExecuteLifecycleAsync(
+            "publish",
+            "릴리스를 게시했습니다.",
+            "릴리스를 게시하지 못했습니다.");
+    }
+
+    private async Task DisableAsync()
+    {
+        if (!IsPublished || _isBusy)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            "배포를 중지하면 다시 게시할 수 없습니다. 중지하시겠습니까?");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await ExecuteLifecycleAsync(
+            "disable",
+            "릴리스 배포를 중지했습니다.",
+            "릴리스 배포를 중지하지 못했습니다.");
+    }
+
+    private async Task ExecuteLifecycleAsync(
+        string action,
+        string successMessage,
+        string failureMessage)
+    {
+        _isBusy = true;
+        _message = "";
+        await InvokeAsync(StateHasChanged);
+
+        var result = await UpdateApiClient.PostAsync<ReleaseLifecycleResponse>(
+            $"api/v1/admin/releases/{ReleaseCode}/{action}");
+
+        if (result.Success)
+        {
+            _messageIsError = false;
+            _message = successMessage;
+            await ReloadDetailAsync();
+            return;
+        }
+
+        await HandleFailureAsync(result, failureMessage);
+        _isBusy = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFailureAsync<T>(
+        UpdateApiCallResult<T> result,
+        string fallback)
+    {
+        if (result.IsUnauthorized)
+        {
+            CurrentUserAccessService.Invalidate();
+            await AuthStateService.ClearAsync();
+            NavigationManager.NavigateTo("/login", forceLoad: true, replace: true);
+            return;
+        }
+
+        if (result.IsForbidden)
+        {
+            CurrentUserAccessService.Invalidate();
+            _accessDenied = true;
+            _detail = null;
+            return;
+        }
+
+        if (result.IsNotFound)
+        {
+            _notFound = true;
+            _detail = null;
+            return;
+        }
+
+        _messageIsError = true;
+        _message = result.IsConflict
+            ? "다른 작업으로 릴리스 상태가 변경되었습니다. 화면을 다시 불러온 뒤 확인해 주세요."
+            : result.IsServiceUnavailable
+                ? "관리자 권한 확인 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."
+                : string.IsNullOrWhiteSpace(result.Message)
+                    ? fallback
+                    : result.Message;
+    }
+
+    private void BackToList()
+    {
+        NavigationManager.NavigateTo("/updates/releases");
+    }
+
+    private static string GetStatusName(ReleaseDetailResponse detail)
+    {
+        if (!string.IsNullOrWhiteSpace(detail.StatusName))
+        {
+            return detail.StatusName;
+        }
+
+        return detail.Status switch
+        {
+            ReleaseStatusCodes.Draft => "Draft",
+            ReleaseStatusCodes.Published => "Published",
+            ReleaseStatusCodes.Disabled => "Disabled",
+            _ => detail.Status.ToString(CultureInfo.InvariantCulture)
+        };
+    }
+
+    private static string GetStatusBadge(int status)
+    {
+        return status switch
+        {
+            ReleaseStatusCodes.Draft => "text-bg-secondary",
+            ReleaseStatusCodes.Published => "text-bg-success",
+            ReleaseStatusCodes.Disabled => "text-bg-dark",
+            _ => "text-bg-light"
+        };
+    }
+
+    private static string FormatDateTime(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : "-";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return $"{bytes:N0} B";
+        }
+
+        if (bytes < 1024L * 1024L)
+        {
+            return $"{bytes / 1024d:N1} KB";
+        }
+
+        if (bytes < 1024L * 1024L * 1024L)
+        {
+            return $"{bytes / 1024d / 1024d:N1} MB";
+        }
+
+        return $"{bytes / 1024d / 1024d / 1024d:N2} GB";
+    }
+
+    private static string ShortenSha256(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) || value.Length <= 16
+            ? value
+            : $"{value[..8]}…{value[^8..]}";
+    }
+}
