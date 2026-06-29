@@ -15,7 +15,7 @@ public class ArtifactUploadInteropPolicyTests
         Assert.Equal(
             "https://update.example.com/api/v1/admin/releases/123/artifacts",
             url);
-        Assert.DoesNotContain("token", url, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token", url.ToLowerInvariant());
     }
 
     [Theory]
