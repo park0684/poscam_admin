@@ -43,14 +43,14 @@
                 {
                     <button type="button"
                             class="btn btn-outline-danger"
-                            disabled="@_isBusy"
+                            disabled="@(_isBusy || _isUploading)"
                             @onclick="DeleteAsync">
                         Draft 삭제
                     </button>
                     <button type="button"
                             class="btn btn-success"
-                            disabled="@(_isBusy || _detail!.Artifacts.Count == 0)"
-                            title="@(_detail!.Artifacts.Count == 0 ? "게시하려면 활성 Artifact가 필요합니다." : null)"
+                            disabled="@(_isBusy || _isUploading || ActiveArtifactCount == 0)"
+                            title="@(ActiveArtifactCount == 0 ? "게시하려면 활성 Artifact가 필요합니다." : null)"
                             @onclick="PublishAsync">
                         게시
                     </button>
@@ -59,7 +59,7 @@
                 {
                     <button type="button"
                             class="btn btn-warning"
-                            disabled="@_isBusy"
+                            disabled="@(_isBusy || _isUploading)"
                             @onclick="DisableAsync">
                         배포 중지
                     </button>
@@ -93,7 +93,7 @@
                     <ReleaseForm Model="_model"
                                  Products="_products"
                                  IsReadOnly="@(!IsDraft)"
-                                 IsBusy="_isBusy"
+                                 IsBusy="@(_isBusy || _isUploading)"
                                  SubmitText="Draft 저장"
                                  OnValidSubmit="SaveAsync" />
                 </div>
@@ -123,6 +123,16 @@
                 </div>
             </div>
 
+            @if (IsDraft)
+            {
+                <ArtifactUploadPanel ReleaseCode="ReleaseCode"
+                                     ExistingArtifacts="_detail.Artifacts"
+                                     Disabled="_isBusy"
+                                     OnUploadStateChanged="HandleUploadStateChangedAsync"
+                                     OnUploadSucceeded="HandleUploadSucceededAsync"
+                                     OnAccessDenied="HandleUploadAccessDeniedAsync" />
+            }
+
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Artifact</span>
@@ -133,10 +143,6 @@
                     {
                         <div class="p-4 text-center text-muted">
                             등록된 Artifact가 없습니다.
-                            @if (IsDraft)
-                            {
-                                <div class="small mt-1">브라우저 직접 업로드 기능은 C03 단계에서 연결됩니다.</div>
-                            }
                         </div>
                     }
                     else
@@ -188,6 +194,7 @@
     private ReleaseEditModel _model = new();
     private bool _isLoading;
     private bool _isBusy;
+    private bool _isUploading;
     private bool _accessDenied;
     private bool _notFound;
     private bool _messageIsError;
@@ -195,6 +202,8 @@
 
     private bool IsDraft => _detail?.Status == ReleaseStatusCodes.Draft;
     private bool IsPublished => _detail?.Status == ReleaseStatusCodes.Published;
+    private int ActiveArtifactCount =>
+        _detail?.Artifacts.Count(artifact => artifact.Status == 1) ?? 0;
 
     private async Task LoadAsync()
     {
@@ -243,7 +252,7 @@
 
     private async Task SaveAsync()
     {
-        if (!IsDraft || _isBusy)
+        if (!IsDraft || _isBusy || _isUploading)
         {
             return;
         }
@@ -277,7 +286,7 @@
 
     private async Task DeleteAsync()
     {
-        if (!IsDraft || _isBusy)
+        if (!IsDraft || _isBusy || _isUploading)
         {
             return;
         }
@@ -310,7 +319,7 @@
 
     private async Task PublishAsync()
     {
-        if (!IsDraft || _isBusy || _detail!.Artifacts.Count == 0)
+        if (!IsDraft || _isBusy || _isUploading || ActiveArtifactCount == 0)
         {
             return;
         }
@@ -332,7 +341,7 @@
 
     private async Task DisableAsync()
     {
-        if (!IsPublished || _isBusy)
+        if (!IsPublished || _isBusy || _isUploading)
         {
             return;
         }
@@ -357,6 +366,11 @@
         string successMessage,
         string failureMessage)
     {
+        if (_isUploading)
+        {
+            return;
+        }
+
         _isBusy = true;
         _message = "";
         await InvokeAsync(StateHasChanged);
@@ -375,6 +389,26 @@
         await HandleFailureAsync(result, failureMessage);
         _isBusy = false;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleUploadStateChangedAsync(bool isUploading)
+    {
+        _isUploading = isUploading;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleUploadSucceededAsync()
+    {
+        _messageIsError = false;
+        _message = "Artifact 업로드 결과를 반영했습니다.";
+        await ReloadDetailAsync();
+    }
+
+    private Task HandleUploadAccessDeniedAsync()
+    {
+        _accessDenied = true;
+        _detail = null;
+        return InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleFailureAsync<T>(
