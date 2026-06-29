@@ -9,8 +9,8 @@
 | A04 | 내부 권한 API | Completed | Release 성공 (경고 0, 오류 0) | 14개 통과 | 서비스 키 설정, 내부 권한 Controller·Actor DTO·Helper·테스트, 운영 Secret 문서, WORK_STATUS | 키·Bearer 401, 권한 403, UpdateManage 고정 |
 | A05 | AuthServer 검증 | Completed | Release 성공 (경고 0, 오류 0) | 25개 통과 | 위변조 토큰 결함 수정, 내부 API·계약 검증 테스트, WORK_STATUS | Secret 검색 이상 없음, B05 선행 가능 |
 | C00 | AdminWeb 분석 | Completed | Release 성공 (경고 6, 오류 0) | 코드 테스트 없음 | codex/reports/C00_ADMINWEB_ANALYSIS.md, codex/reports/C00_BUILD_VERIFICATION.md, WORK_STATUS | 분석·로컬 검증 완료, 경고 6개는 기존 AdminWeb 미사용 필드 |
-| C01 | 접근정보·메뉴 | Pending | - | - | - | C00 완료 후 |
-| C02 | 릴리스 화면 | Pending | - | - | - | - |
+| C01 | 접근정보·메뉴 | InProgress | 로컬 검증 필요 | AdminWeb.Tests 19개 예상 | 접근정보 DTO·Scoped 캐시·메뉴 필터·NavMenu·DI·AdminWeb.Tests·C01 보고서 | 구현 완료, Release 빌드·전체 테스트 확인 후 Completed |
+| C02 | 릴리스 화면 | Pending | - | - | - | C01 완료 후 |
 | C03 | 직접 업로드 | Pending | - | - | - | - |
 | C04 | 감사·오류 | Pending | - | - | - | - |
 | C05 | AdminWeb 검증 | Pending | - | - | - | - |
