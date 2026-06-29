@@ -11,8 +11,8 @@
 | C00 | AdminWeb 분석 | Completed | Release 성공 (경고 6, 오류 0) | 코드 테스트 없음 | codex/reports/C00_ADMINWEB_ANALYSIS.md, codex/reports/C00_BUILD_VERIFICATION.md, WORK_STATUS | 분석·로컬 검증 완료, 경고 6개는 기존 AdminWeb 미사용 필드 |
 | C01 | 접근정보·메뉴 | Completed | Release 성공 (경고 0, 오류 0) | AdminWeb.Tests 19/19, 전체 44/44 성공 | 접근정보 DTO·Scoped 캐시·메뉴 필터·NavMenu·DI·AdminWeb.Tests·C01 보고서 | 사용자 로컬 검증 완료 |
 | C02 | 릴리스 화면 | Completed | Release 성공 (기존 경고 6, 오류 0) | AdminWeb.Tests 39/39, 전체 64/64 성공 | UpdateApiSettings·UpdateApiClient·DTO·Guard·릴리스 목록·신규·상세·UI 정책 테스트·C02 보고서 | 사용자 로컬 검증 완료, C02 신규 경고 0 |
-| C03 | 직접 업로드 | Pending | - | - | - | C02 완료 후 |
-| C04 | 감사·오류 | Pending | - | - | - | - |
+| C03 | 직접 업로드 | InProgress | 로컬 검증 필요 | AdminWeb.Tests 61개, 전체 86개 예상 | XHR 직접 업로드·Interop DTO·Upload Panel·Release 상세 연결·정적 참조·정책 테스트·C03 보고서 | 코드 구현 완료, 빌드·테스트 및 Browser Network 확인 필요 |
+| C04 | 감사·오류 | Pending | - | - | - | C03 완료 후 |
 | C05 | AdminWeb 검증 | Pending | - | - | - | - |
 
 상태: Pending / InProgress / Completed / Blocked
