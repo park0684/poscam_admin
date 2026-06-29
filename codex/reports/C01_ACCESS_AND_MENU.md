@@ -2,11 +2,12 @@
 
 ## 작업 결과
 
-- 상태: InProgress
+- 상태: Completed
 - 접근정보 DTO·정책·서비스: 구현 완료
 - 권한 기반 업데이트 메뉴: 구현 완료
 - AdminWeb 테스트 프로젝트: 추가 완료
-- 로컬 Release 빌드·전체 테스트: 확인 필요
+- 로컬 Release 빌드: 성공, 오류 0, 경고 0
+- 전체 테스트: 44/44 성공, 실패 0, 건너뜀 0
 
 ## 기준 환경
 
@@ -34,7 +35,7 @@
   - Token 변경 시 자동 캐시 폐기
   - forceRefresh, 401, 403, 로그아웃 시 캐시 무효화
   - 빈 Body, 비JSON, 네트워크 오류를 안전한 실패 결과로 변환
-  - 401과 403을 구분
+  - 401과 403 구분
 
 ### 메뉴
 
@@ -53,22 +54,19 @@
   - 권한 있는 자식이 없는 빈 부모 그룹 숨김
   - 기존 메뉴 순서와 구조 유지
 - `AdminWeb/Components/Layout/NavMenu.razor`
-  - 초기 렌더에서는 권한 필요 메뉴를 숨김
+  - 초기 렌더에서는 권한 필요 메뉴 숨김
   - 첫 Interactive Render 이후 접근정보 조회
   - 401: 로그인 상태와 접근 캐시 제거 후 `/login` 이동
   - 403·조회 실패: 로그인 유지, 업데이트 메뉴 숨김
   - 로그아웃 시 접근 캐시와 sessionStorage 로그인 상태 동시 제거
 
-### DI
+### DI와 테스트
 
 - `AdminWeb/Program.cs`
   - `MenuAccessFilter` Scoped 등록
   - AuthServer 접근정보용 named HttpClient 등록
   - `CurrentUserAccessService`를 명시적으로 Scoped 등록
   - 기존 AuthServer `ApiClient` 등록과 BaseAddress는 변경하지 않음
-
-### 테스트
-
 - `AdminWeb.Tests/poscam.AdminWeb.Tests.csproj`
 - `AdminWeb.Tests/Navigation/MenuAccessFilterTests.cs`
 - `AdminWeb.Tests/Services/CurrentUserAccessPolicyTests.cs`
@@ -106,15 +104,8 @@ PartnerUser(2)
 - 연결 키: 현재 AccountToken
 - 캐시 대상: 성공 응답만
 - sessionStorage 저장: 금지
-- 자동 무효화:
-  - Token 변경
-  - Token 없음
-  - 401
-  - 403
-  - forceRefresh 시작
-- 명시적 무효화:
-  - 로그아웃
-  - 향후 UpdateServer 403 공통 처리
+- 자동 무효화: Token 변경, Token 없음, 401, 403, forceRefresh 시작
+- 명시적 무효화: 로그아웃, 향후 UpdateServer 403 공통 처리
 
 강제 새로고침이 실패해도 이전 권한을 재사용하지 않도록 API 호출 전에 기존 캐시를 제거한다.
 
@@ -160,11 +151,9 @@ OnAfterRenderAsync(firstRender=true)
 - 401과 403 상태 구분
 - Token 없음 시 API 호출 안 함
 
-예상 AdminWeb.Tests 테스트 수: 19개
+## 검증 결과
 
-기존 AuthServer.Tests 25개를 포함한 예상 전체 테스트 수: 44개
-
-## 검증 명령
+실행 명령:
 
 ```powershell
 cd D:\_work\poscam
@@ -177,28 +166,28 @@ dotnet build poscam.sln -c Release
 dotnet test poscam.sln -c Release --no-build
 ```
 
-## 검증 기준
+결과:
 
 - Restore 성공
-- AuthServer Release 빌드 성공
-- AdminWeb Release 빌드 성공
-- AuthServer.Tests Release 빌드 성공
-- AdminWeb.Tests Release 빌드 성공
+- `poscam.AdminWeb` Release 빌드 성공
+- `poscam.AuthServer` Release 빌드 성공
+- `poscam.AdminWeb.Tests` Release 빌드 성공
+- `poscam.AuthServer.Tests` Release 빌드 성공
 - 컴파일 오류 0
-- 새 경고 0
+- 경고 0
 - AdminWeb.Tests 19/19 성공
-- 전체 테스트 약 44개 성공
+- AuthServer.Tests 25/25 성공
+- 전체 테스트 44/44 성공
 - 실패 0
 - 건너뜀 0
 
-기존 AdminWeb 미사용 필드 경고 6개는 C00에서 확인된 기존 경고이며 C01 변경으로 증가하지 않아야 한다.
-
 ## 남은 문제
 
-- 컴파일 오류: 로컬 검증 필요
-- 실제 동작 오류: 로그인 계정별 메뉴 확인은 C05 통합 검증에서 수행
+- 컴파일 오류: 없음
+- 실제 동작 오류: 자동 테스트에서 발견 없음
+- 실제 계정별 메뉴 확인: C05 통합 검증에서 수행
 - 불필요한 중복: 기존 ApiClient를 재사용하지 않고 접근정보 전용 Client로 분리
-- 다음 단계 선행조건: Release 빌드와 전체 테스트 성공 후 C02 시작
+- 다음 단계 선행조건: 충족, C02 시작 가능
 
 ## 정책 이탈 여부
 
