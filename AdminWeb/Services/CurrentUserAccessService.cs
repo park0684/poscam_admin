@@ -73,8 +73,11 @@ public sealed class CurrentUserAccessService : IDisposable
                 return CurrentUserAccessResult.Ok(_cachedAccess);
             }
 
-            if (!string.Equals(_cachedToken, token, StringComparison.Ordinal))
+            if (forceRefresh
+                || !string.Equals(_cachedToken, token, StringComparison.Ordinal))
             {
+                // 강제 재조회가 실패하더라도 이전 권한을 다시 사용하지 않도록
+                // 요청 전에 기존 캐시를 제거한다.
                 ClearCacheCore();
             }
 
