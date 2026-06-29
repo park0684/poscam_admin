@@ -21,7 +21,11 @@ public class ArtifactUploadInteropPolicyTests
     [Theory]
     [InlineData("")]
     [InlineData("not-a-url")]
-    public void BuildUploadUrl_잘못된_PublicBaseUrl을_거부한다(string baseUrl)
+    [InlineData("https://user@update.example.com")]
+    [InlineData("https://update.example.com?token=secret")]
+    [InlineData("https://update.example.com#fragment")]
+    public void BuildUploadUrl_잘못되거나_민감정보를포함한_PublicBaseUrl을_거부한다(
+        string baseUrl)
     {
         Assert.Throws<ArgumentException>(() =>
             ArtifactUploadUiPolicy.BuildUploadUrl(baseUrl, 1));
