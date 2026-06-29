@@ -292,6 +292,9 @@ public sealed class CurrentUserAccessService : IDisposable
 
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(CurrentUserAccessService));
+        }
     }
 }
