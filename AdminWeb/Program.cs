@@ -13,6 +13,24 @@ builder.Services.AddRazorComponents()
 builder.Services.Configure<ApiSettings>(
     builder.Configuration.GetSection("ApiSettings"));
 
+builder.Services
+    .AddOptions<UpdateApiSettings>()
+    .Bind(builder.Configuration.GetSection(UpdateApiSettings.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(
+        settings =>
+            Uri.TryCreate(settings.InternalBaseUrl, UriKind.Absolute, out var internalUri)
+            && (internalUri.Scheme == Uri.UriSchemeHttp
+                || internalUri.Scheme == Uri.UriSchemeHttps),
+        "UpdateApiSettings:InternalBaseUrl은 유효한 HTTP 또는 HTTPS 절대 URL이어야 합니다.")
+    .Validate(
+        settings =>
+            Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var publicUri)
+            && (publicUri.Scheme == Uri.UriSchemeHttp
+                || publicUri.Scheme == Uri.UriSchemeHttps),
+        "UpdateApiSettings:PublicBaseUrl은 유효한 HTTP 또는 HTTPS 절대 URL이어야 합니다.")
+    .ValidateOnStart();
+
 builder.Services.AddScoped<AuthStateService>();
 builder.Services.AddScoped<MenuAccessFilter>();
 
@@ -44,6 +62,19 @@ builder.Services.AddScoped(serviceProvider =>
             .GetRequiredService<IHttpClientFactory>()
             .CreateClient(currentUserAccessHttpClientName),
         serviceProvider.GetRequiredService<AuthStateService>()));
+
+// UpdateServer JSON API는 AuthServer ApiClient와 BaseAddress·오류 계약을
+// 공유하지 않는다. C03의 browser 직접 업로드에는 PublicBaseUrl을 사용한다.
+builder.Services.AddHttpClient<UpdateApiClient>((serviceProvider, client) =>
+{
+    var updateApiSettings = serviceProvider
+        .GetRequiredService<IOptions<UpdateApiSettings>>()
+        .Value;
+
+    client.BaseAddress = new Uri(
+        updateApiSettings.InternalBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 var app = builder.Build();
 
