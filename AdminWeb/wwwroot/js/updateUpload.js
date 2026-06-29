@@ -2,34 +2,6 @@
     "use strict";
 
     const activeRequests = new Map();
-    let beforeUnloadRegistered = false;
-
-    function registerBeforeUnload() {
-        if (beforeUnloadRegistered) {
-            return;
-        }
-
-        window.addEventListener("beforeunload", handleBeforeUnload);
-        beforeUnloadRegistered = true;
-    }
-
-    function unregisterBeforeUnloadIfIdle() {
-        if (!beforeUnloadRegistered || activeRequests.size > 0) {
-            return;
-        }
-
-        window.removeEventListener("beforeunload", handleBeforeUnload);
-        beforeUnloadRegistered = false;
-    }
-
-    function handleBeforeUnload(event) {
-        if (activeRequests.size === 0) {
-            return;
-        }
-
-        event.preventDefault();
-        event.returnValue = "";
-    }
 
     function safeInvoke(dotNetReference, methodName, payload) {
         if (!dotNetReference) {
@@ -90,7 +62,6 @@
 
         state.completed = true;
         activeRequests.delete(uploadKey);
-        unregisterBeforeUnloadIfIdle();
         safeInvoke(state.dotNetReference, "OnUploadCompletedAsync", result);
     }
 
@@ -199,21 +170,27 @@
             formData.append("packageType", options.packageType || "");
             formData.append("file", file, file.name);
 
+            try {
+                xhr.open("POST", options.url, true);
+                xhr.withCredentials = false;
+                xhr.setRequestHeader("Accept", "application/json");
+                xhr.setRequestHeader("Authorization", "Bearer " + options.token);
+
+                if (options.requestId) {
+                    xhr.setRequestHeader("X-Request-ID", options.requestId);
+                }
+            } catch (_) {
+                return {
+                    started: false,
+                    message: "업로드 주소를 열지 못했습니다."
+                };
+            }
+
             activeRequests.set(options.uploadKey, {
                 xhr: xhr,
                 dotNetReference: dotNetReference,
                 completed: false
             });
-            registerBeforeUnload();
-
-            xhr.open("POST", options.url, true);
-            xhr.withCredentials = false;
-            xhr.setRequestHeader("Accept", "application/json");
-            xhr.setRequestHeader("Authorization", "Bearer " + options.token);
-
-            if (options.requestId) {
-                xhr.setRequestHeader("X-Request-ID", options.requestId);
-            }
 
             xhr.upload.onprogress = function (event) {
                 const total = event.lengthComputable ? event.total : file.size;
@@ -287,7 +264,6 @@
                 xhr.send(formData);
             } catch (_) {
                 activeRequests.delete(options.uploadKey);
-                unregisterBeforeUnloadIfIdle();
 
                 return {
                     started: false,
