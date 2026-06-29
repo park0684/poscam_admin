@@ -7,17 +7,25 @@
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label">제품</label>
-            <InputSelect class="form-select"
-                         @bind-Value="Model.ProductCode"
-                         disabled="@IsReadOnly">
-                <option value="">선택</option>
-                @foreach (var product in Products)
-                {
-                    <option value="@product.ProductCode">
-                        @product.ProductName (@product.ProductCode)
-                    </option>
-                }
-            </InputSelect>
+            @if (IsReadOnly)
+            {
+                <input class="form-control"
+                       value="@GetProductDisplayName()"
+                       disabled />
+            }
+            else
+            {
+                <InputSelect class="form-select"
+                             @bind-Value="Model.ProductCode">
+                    <option value="">선택</option>
+                    @foreach (var product in Products)
+                    {
+                        <option value="@product.ProductCode">
+                            @product.ProductName (@product.ProductCode)
+                        </option>
+                    }
+                </InputSelect>
+            }
             <ValidationMessage For="@(() => Model.ProductCode)" />
         </div>
 
@@ -125,6 +133,19 @@
 
     [Parameter]
     public EventCallback OnCancel { get; set; }
+
+    private string GetProductDisplayName()
+    {
+        var product = Products.FirstOrDefault(item =>
+            string.Equals(
+                item.ProductCode,
+                Model.ProductCode,
+                StringComparison.OrdinalIgnoreCase));
+
+        return product is null
+            ? Model.ProductCode
+            : $"{product.ProductName} ({product.ProductCode})";
+    }
 
     private Task HandleValidSubmitAsync()
     {
