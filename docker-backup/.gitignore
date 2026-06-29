@@ -1,0 +1,3 @@
+# Local database backup files must never be committed.
+*
+!.gitignore
