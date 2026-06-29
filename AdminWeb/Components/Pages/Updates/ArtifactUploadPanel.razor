@@ -1,0 +1,491 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.Extensions.Options
+@using poscam.AdminWeb.Models
+@using poscam.AdminWeb.Models.Updates
+@using poscam.AdminWeb.Services
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+@inject IOptions<UpdateApiSettings> UpdateApiSettingsOptions
+@inject AuthStateService AuthStateService
+@inject CurrentUserAccessService CurrentUserAccessService
+@inject NavigationManager NavigationManager
+
+<NavigationLock ConfirmExternalNavigation="@_isUploading"
+                OnBeforeInternalNavigation="HandleInternalNavigationAsync" />
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Artifact 직접 업로드</span>
+        <span class="text-muted small">ZIP은 AdminWeb 서버를 거치지 않습니다.</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">OS</label>
+                <select class="form-select"
+                        @bind="_os"
+                        disabled="@(Disabled || _isUploading)">
+                    <option value="windows">windows</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Architecture</label>
+                <select class="form-select"
+                        @bind="_architecture"
+                        disabled="@(Disabled || _isUploading)">
+                    <option value="x86">x86</option>
+                    <option value="x64">x64</option>
+                    <option value="any">any</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Package Type</label>
+                <select class="form-select"
+                        @bind="_packageType"
+                        disabled="@(Disabled || _isUploading)">
+                    <option value="full">full</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">ZIP 파일</label>
+                <input id="@_inputElementId"
+                       class="form-control"
+                       type="file"
+                       accept=".zip,application/zip,application/x-zip-compressed"
+                       disabled="@(Disabled || _isUploading)" />
+            </div>
+        </div>
+
+        <div class="mt-3 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <div class="text-muted small">
+                최대 1GB · 동일 Target은 기존 Draft Artifact를 교체합니다.
+            </div>
+            <div class="d-flex gap-2">
+                @if (_isUploading)
+                {
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            @onclick="CancelUploadAsync">
+                        업로드 취소
+                    </button>
+                }
+                else
+                {
+                    <button type="button"
+                            class="btn btn-primary"
+                            disabled="@Disabled"
+                            @onclick="StartUploadAsync">
+                        ZIP 업로드
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (_isUploading)
+        {
+            <div class="mt-3">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>@_selectedFileName</span>
+                    <span>@_progressPercent% · @FormatFileSize(_progressLoaded) / @FormatFileSize(_progressTotal)</span>
+                </div>
+                <div class="progress" role="progressbar"
+                     aria-valuenow="@_progressPercent"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         style="width: @_progressPercent%">
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") mt-3 mb-0">
+                @_message
+                @if (!string.IsNullOrWhiteSpace(_requestId))
+                {
+                    <div class="small mt-1">Request ID: @_requestId</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _uploadKey = Guid.NewGuid().ToString("N");
+    private readonly string _inputElementId = $"artifact-upload-file-{Guid.NewGuid():N}";
+
+    private DotNetObjectReference<ArtifactUploadPanel>? _dotNetReference;
+    private string _os = "windows";
+    private string _architecture = "x64";
+    private string _packageType = "full";
+    private string _selectedFileName = "";
+    private string _message = "";
+    private string? _requestId;
+    private bool _messageIsError;
+    private bool _isUploading;
+    private int _progressPercent;
+    private long _progressLoaded;
+    private long _progressTotal;
+    private bool _disposed;
+
+    [Parameter]
+    public long ReleaseCode { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ReleaseArtifactSummaryResponse> ExistingArtifacts { get; set; } =
+        Array.Empty<ReleaseArtifactSummaryResponse>();
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnUploadStateChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnUploadSucceeded { get; set; }
+
+    [Parameter]
+    public EventCallback OnAccessDenied { get; set; }
+
+    private async Task StartUploadAsync()
+    {
+        if (_isUploading || Disabled || ReleaseCode <= 0)
+        {
+            return;
+        }
+
+        _message = "";
+        _requestId = null;
+        _messageIsError = false;
+
+        ArtifactSelectedFileInfo? selectedFile;
+
+        try
+        {
+            selectedFile = await JSRuntime.InvokeAsync<ArtifactSelectedFileInfo>(
+                "poscamUpdateUpload.getSelectedFileInfo",
+                _inputElementId);
+        }
+        catch (JSException)
+        {
+            SetFailure("업로드 기능을 초기화하지 못했습니다. 화면을 새로 고침해 주세요.");
+            return;
+        }
+
+        if (selectedFile is null || !selectedFile.HasFile)
+        {
+            SetFailure("업로드할 ZIP 파일을 선택해 주세요.");
+            return;
+        }
+
+        if (!selectedFile.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            SetFailure("ZIP 확장자 파일만 선택할 수 있습니다.");
+            return;
+        }
+
+        if (selectedFile.Size <= 0)
+        {
+            SetFailure("비어 있는 파일은 업로드할 수 없습니다.");
+            return;
+        }
+
+        if (selectedFile.Size > ArtifactUploadUiPolicy.DefaultMaximumFileSize)
+        {
+            SetFailure("업로드 파일이 1GB를 초과했습니다.");
+            return;
+        }
+
+        if (ArtifactUploadUiPolicy.HasActiveTarget(
+                ExistingArtifacts,
+                _os,
+                _architecture,
+                _packageType))
+        {
+            var replaceConfirmed = await JSRuntime.InvokeAsync<bool>(
+                "confirm",
+                $"{_os}/{_architecture}/{_packageType} Target의 기존 Artifact를 교체합니다. 계속하시겠습니까?");
+
+            if (!replaceConfirmed)
+            {
+                return;
+            }
+        }
+
+        string? token;
+
+        try
+        {
+            token = await AuthStateService.GetTokenAsync();
+        }
+        catch (JSException)
+        {
+            SetFailure("로그인 상태를 확인할 수 없습니다.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            await HandleUnauthorizedAsync();
+            return;
+        }
+
+        string uploadUrl;
+
+        try
+        {
+            uploadUrl = ArtifactUploadUiPolicy.BuildUploadUrl(
+                UpdateApiSettingsOptions.Value.PublicBaseUrl,
+                ReleaseCode);
+        }
+        catch (ArgumentException)
+        {
+            SetFailure("UpdateServer 공개 주소 설정이 올바르지 않습니다.");
+            return;
+        }
+
+        _dotNetReference ??= DotNetObjectReference.Create(this);
+        _selectedFileName = selectedFile.Name;
+        _progressPercent = 0;
+        _progressLoaded = 0;
+        _progressTotal = selectedFile.Size;
+        _isUploading = true;
+        await NotifyUploadStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+
+        ArtifactUploadStartResult? startResult;
+
+        try
+        {
+            startResult = await JSRuntime.InvokeAsync<ArtifactUploadStartResult>(
+                "poscamUpdateUpload.start",
+                new ArtifactUploadStartOptions
+                {
+                    UploadKey = _uploadKey,
+                    InputElementId = _inputElementId,
+                    Url = uploadUrl,
+                    Token = token,
+                    RequestId = Guid.NewGuid().ToString("N"),
+                    Os = _os,
+                    Architecture = _architecture,
+                    PackageType = _packageType
+                },
+                _dotNetReference);
+        }
+        catch (JSException)
+        {
+            await ResetUploadStateAsync();
+            SetFailure("브라우저에서 업로드를 시작하지 못했습니다.");
+            return;
+        }
+
+        if (startResult is null || !startResult.Started)
+        {
+            await ResetUploadStateAsync();
+            SetFailure(string.IsNullOrWhiteSpace(startResult?.Message)
+                ? "업로드를 시작하지 못했습니다."
+                : startResult.Message);
+        }
+    }
+
+    private async Task CancelUploadAsync()
+    {
+        if (!_isUploading)
+        {
+            return;
+        }
+
+        try
+        {
+            await JSRuntime.InvokeAsync<bool>(
+                "poscamUpdateUpload.cancel",
+                _uploadKey);
+        }
+        catch (JSException)
+        {
+            await ResetUploadStateAsync();
+            SetFailure("업로드 취소 요청을 처리하지 못했습니다.");
+        }
+    }
+
+    [JSInvokable]
+    public Task OnUploadProgressAsync(ArtifactUploadProgress progress)
+    {
+        if (_disposed || !_isUploading)
+        {
+            return Task.CompletedTask;
+        }
+
+        _progressLoaded = Math.Max(0, progress.Loaded);
+        _progressTotal = Math.Max(_progressLoaded, progress.Total);
+        _progressPercent = Math.Clamp(progress.Percent, 0, 100);
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnUploadCompletedAsync(ArtifactUploadResult result)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        await ResetUploadStateAsync();
+        _requestId = result.RequestId;
+
+        if (result.Success)
+        {
+            _messageIsError = false;
+            _message = result.Replaced
+                ? "기존 Target의 Artifact를 교체했습니다."
+                : "Artifact를 업로드했습니다.";
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync(
+                    "poscamUpdateUpload.clearSelectedFile",
+                    _inputElementId);
+            }
+            catch (JSException)
+            {
+                // 업로드 성공 후 input 초기화 실패는 서버 처리 결과에 영향을 주지 않는다.
+            }
+
+            if (OnUploadSucceeded.HasDelegate)
+            {
+                await OnUploadSucceeded.InvokeAsync();
+            }
+
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (ArtifactUploadUiPolicy.IsUnauthorized(result))
+        {
+            await HandleUnauthorizedAsync();
+            return;
+        }
+
+        if (ArtifactUploadUiPolicy.IsForbidden(result))
+        {
+            CurrentUserAccessService.Invalidate();
+            SetFailure(ArtifactUploadUiPolicy.GetFailureMessage(result));
+
+            if (OnAccessDenied.HasDelegate)
+            {
+                await OnAccessDenied.InvokeAsync();
+            }
+
+            return;
+        }
+
+        SetFailure(ArtifactUploadUiPolicy.GetFailureMessage(result));
+    }
+
+    private async Task HandleInternalNavigationAsync(
+        LocationChangingContext context)
+    {
+        if (!_isUploading)
+        {
+            return;
+        }
+
+        var leaveConfirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            "Artifact 업로드가 진행 중입니다. 업로드를 취소하고 이동하시겠습니까?");
+
+        if (!leaveConfirmed)
+        {
+            context.PreventNavigation();
+            return;
+        }
+
+        await CancelUploadAsync();
+    }
+
+    private async Task HandleUnauthorizedAsync()
+    {
+        CurrentUserAccessService.Invalidate();
+        await AuthStateService.ClearAsync();
+        NavigationManager.NavigateTo("/login", forceLoad: true, replace: true);
+    }
+
+    private async Task ResetUploadStateAsync()
+    {
+        _isUploading = false;
+        await NotifyUploadStateChangedAsync();
+    }
+
+    private Task NotifyUploadStateChangedAsync()
+    {
+        return OnUploadStateChanged.HasDelegate
+            ? OnUploadStateChanged.InvokeAsync(_isUploading)
+            : Task.CompletedTask;
+    }
+
+    private void SetFailure(string message)
+    {
+        _messageIsError = true;
+        _message = message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 B";
+        }
+
+        if (bytes < 1024)
+        {
+            return $"{bytes:N0} B";
+        }
+
+        if (bytes < 1024L * 1024L)
+        {
+            return $"{bytes / 1024d:N1} KB";
+        }
+
+        if (bytes < 1024L * 1024L * 1024L)
+        {
+            return $"{bytes / 1024d / 1024d:N1} MB";
+        }
+
+        return $"{bytes / 1024d / 1024d / 1024d:N2} GB";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        if (_isUploading)
+        {
+            try
+            {
+                await JSRuntime.InvokeAsync<bool>(
+                    "poscamUpdateUpload.cancel",
+                    _uploadKey);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+            catch (JSException)
+            {
+            }
+        }
+
+        _dotNetReference?.Dispose();
+    }
+}
