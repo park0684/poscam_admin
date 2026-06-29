@@ -1,0 +1,142 @@
+@using poscam.AdminWeb.Models.Updates
+
+<EditForm Model="Model" OnValidSubmit="HandleValidSubmitAsync">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">제품</label>
+            <InputSelect class="form-select"
+                         @bind-Value="Model.ProductCode"
+                         disabled="@IsReadOnly">
+                <option value="">선택</option>
+                @foreach (var product in Products)
+                {
+                    <option value="@product.ProductCode">
+                        @product.ProductName (@product.ProductCode)
+                    </option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.ProductCode)" />
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">버전</label>
+            <InputText class="form-control"
+                       @bind-Value="Model.Version"
+                       disabled="@IsReadOnly"
+                       placeholder="예: 1.2.3 또는 1.2.3.4" />
+            <ValidationMessage For="@(() => Model.Version)" />
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">채널</label>
+            <InputSelect class="form-select"
+                         @bind-Value="Model.Channel"
+                         disabled="@IsReadOnly">
+                @foreach (var channel in ReleaseChannels.All)
+                {
+                    <option value="@channel">@channel</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="@(() => Model.Channel)" />
+        </div>
+
+        <div class="col-md-4">
+            <div class="form-check mt-4 pt-2">
+                <InputCheckbox class="form-check-input"
+                               @bind-Value="Model.IsMandatory"
+                               disabled="@IsReadOnly" />
+                <label class="form-check-label">전체 강제 업데이트</label>
+            </div>
+            <ValidationMessage For="@(() => Model.IsMandatory)" />
+        </div>
+
+        <div class="col-md-8">
+            <label class="form-label">강제 업데이트 기준 버전</label>
+            <InputText class="form-control"
+                       @bind-Value="Model.ForceUpdateBelowVersion"
+                       disabled="@IsReadOnly"
+                       placeholder="이 버전 미만의 Client만 강제 업데이트" />
+            <ValidationMessage For="@(() => Model.ForceUpdateBelowVersion)" />
+            <div class="form-text">
+                전체 강제 업데이트와 동시에 사용할 수 없습니다.
+            </div>
+        </div>
+
+        <div class="col-12">
+            <label class="form-label">릴리스 노트</label>
+            <InputTextArea class="form-control"
+                           rows="6"
+                           @bind-Value="Model.ReleaseNotes"
+                           disabled="@IsReadOnly" />
+        </div>
+
+        <div class="col-12">
+            <label class="form-label">내부 메모</label>
+            <InputTextArea class="form-control"
+                           rows="4"
+                           @bind-Value="Model.InternalMemo"
+                           disabled="@IsReadOnly" />
+        </div>
+    </div>
+
+    @if (!IsReadOnly)
+    {
+        <div class="mt-4 d-flex gap-2 justify-content-end">
+            @if (OnCancel.HasDelegate)
+            {
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        disabled="@IsBusy"
+                        @onclick="HandleCancelAsync">
+                    취소
+                </button>
+            }
+            <button type="submit"
+                    class="btn btn-primary"
+                    disabled="@IsBusy">
+                @(IsBusy ? "처리 중..." : SubmitText)
+            </button>
+        </div>
+    }
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired]
+    public ReleaseEditModel Model { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<ActiveProductResponse> Products { get; set; } =
+        Array.Empty<ActiveProductResponse>();
+
+    [Parameter]
+    public bool IsReadOnly { get; set; }
+
+    [Parameter]
+    public bool IsBusy { get; set; }
+
+    [Parameter]
+    public string SubmitText { get; set; } = "저장";
+
+    [Parameter]
+    public EventCallback OnValidSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private Task HandleValidSubmitAsync()
+    {
+        return OnValidSubmit.HasDelegate
+            ? OnValidSubmit.InvokeAsync()
+            : Task.CompletedTask;
+    }
+
+    private Task HandleCancelAsync()
+    {
+        return OnCancel.HasDelegate
+            ? OnCancel.InvokeAsync()
+            : Task.CompletedTask;
+    }
+}
