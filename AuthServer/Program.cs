@@ -6,6 +6,13 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Docker Compose에서 /run/secrets에 마운트한 Secret 파일을
+// ASP.NET Core 구성값으로 읽는다.
+// 로컬 Windows 개발환경에는 해당 경로가 없으므로 optional=true로 처리한다.
+builder.Configuration.AddKeyPerFile(
+    directoryPath: "/run/secrets",
+    optional: true);
+
 // Dapper에서 store_code → StoreCode 형태의 매핑을 허용한다.
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
