@@ -142,10 +142,11 @@ public class UpdateApiClientTests
 
         var result = await client.GetAsync<ReleaseDetailResponse>(
             "api/v1/admin/releases/1");
+        var normalizedMessage = result.Message.ToLowerInvariant();
 
         Assert.False(result.Success);
-        Assert.DoesNotContain("secret", result.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("html", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret", normalizedMessage);
+        Assert.DoesNotContain("html", normalizedMessage);
     }
 
     [Fact]
