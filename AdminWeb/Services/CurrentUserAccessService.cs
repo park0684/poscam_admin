@@ -225,6 +225,7 @@ public sealed class CurrentUserAccessService : IDisposable
         _disposed = true;
         ClearCacheCore();
         _cacheLock.Dispose();
+        _httpClient.Dispose();
     }
 
     private static async Task<ApiResponse<CurrentUserAccessResponse>?> ReadApiResponseAsync(
@@ -252,7 +253,11 @@ public sealed class CurrentUserAccessService : IDisposable
                 JsonOptions,
                 cancellationToken);
         }
-        catch (JsonException)
+        catch (Exception exception)
+            when (exception is JsonException
+                  or IOException
+                  or HttpRequestException
+                  or NotSupportedException)
         {
             return null;
         }
@@ -261,7 +266,7 @@ public sealed class CurrentUserAccessService : IDisposable
     private static void Normalize(CurrentUserAccessResponse access)
     {
         access.UserName ??= "";
-        access.PermissionCodes = access.PermissionCodes
+        access.PermissionCodes = (access.PermissionCodes ?? new List<int>())
             .Distinct()
             .OrderBy(code => code)
             .ToList();
