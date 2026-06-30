@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.vscode/
+
+.git/
+.gitignore
+
+secrets/
+docker-backup/
+
+**/*.user
+**/*.suo
+**/*.nupkg
+
+TestResults/
