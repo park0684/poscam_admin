@@ -15,6 +15,7 @@ public static class CurrentUserAccessPolicy
 
     public const int PartnerUserManagePermissionCode = 5;
     public const int StoreManagePermissionCode = 7;
+    public const int PartnerUserPasswordResetPermissionCode = 9;
     public const int UpdateManagePermissionCode = 12;
 
     public static bool CanManagePartnerUsers(
@@ -34,6 +35,16 @@ public static class CurrentUserAccessPolicy
             access,
             PartnerUserManagePermissionCode,
             AdminRole);
+    }
+
+    public static bool CanResetPartnerUserPassword(
+        CurrentUserAccessResponse? access)
+    {
+        return CanUsePermission(
+            access,
+            PartnerUserPasswordResetPermissionCode,
+            AdminRole,
+            PartnerUserRole);
     }
 
     public static bool CanManageStores(
