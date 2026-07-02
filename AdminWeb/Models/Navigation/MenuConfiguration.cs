@@ -1,4 +1,4 @@
-﻿using poscam.AdminWeb.Models.Navigation;
+using poscam.AdminWeb.Models.Navigation;
 
 namespace poscam.AdminWeb.Services;
 
@@ -53,6 +53,20 @@ public static class MenuConfiguration
                         Title = "담당자",
                         Url = "users",
                         Order = 2
+                    },
+                    new MenuItem
+                    {
+                        Key = "partner-user-permissions",
+                        Title = "담당자 권한",
+                        Url = "users/permissions",
+                        Order = 3,
+                        Roles = new List<int>
+                        {
+                            CurrentUserAccessPolicy.SystemRole,
+                            CurrentUserAccessPolicy.AdminRole
+                        },
+                        RequiredPermissionCode =
+                            CurrentUserAccessPolicy.PartnerUserManagePermissionCode
                     }
                 }
             },
