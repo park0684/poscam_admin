@@ -14,26 +14,40 @@ public static class CurrentUserAccessPolicy
     public const int PartnerUserRole = 2;
 
     public const int PartnerUserManagePermissionCode = 5;
+    public const int StoreManagePermissionCode = 7;
     public const int UpdateManagePermissionCode = 12;
 
     public static bool CanManagePartnerUserPermissions(
         CurrentUserAccessResponse? access)
     {
-        return CanUseAdminPermission(
+        return CanUsePermission(
             access,
-            PartnerUserManagePermissionCode);
+            PartnerUserManagePermissionCode,
+            AdminRole);
+    }
+
+    public static bool CanManageStores(
+        CurrentUserAccessResponse? access)
+    {
+        return CanUsePermission(
+            access,
+            StoreManagePermissionCode,
+            AdminRole,
+            PartnerUserRole);
     }
 
     public static bool CanManageUpdates(CurrentUserAccessResponse? access)
     {
-        return CanUseAdminPermission(
+        return CanUsePermission(
             access,
-            UpdateManagePermissionCode);
+            UpdateManagePermissionCode,
+            AdminRole);
     }
 
-    private static bool CanUseAdminPermission(
+    private static bool CanUsePermission(
         CurrentUserAccessResponse? access,
-        int permissionCode)
+        int permissionCode,
+        params int[] allowedRoles)
     {
         if (access is null)
         {
@@ -45,7 +59,7 @@ public static class CurrentUserAccessPolicy
             return true;
         }
 
-        return access.UserRole == AdminRole
+        return allowedRoles.Contains(access.UserRole)
                && access.PermissionCodes.Contains(permissionCode);
     }
 }
