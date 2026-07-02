@@ -12,7 +12,6 @@ public class PartnerUserPermissionTypeTests
         {
             [PartnerUserPermissionType.PartnerUserManage] = 5,
             [PartnerUserPermissionType.StoreManage] = 7,
-            [PartnerUserPermissionType.PartnerUserPasswordReset] = 9,
             [PartnerUserPermissionType.ContractManage] = 10,
             [PartnerUserPermissionType.LicenseManage] = 11,
             [PartnerUserPermissionType.DeviceManage] = 13
