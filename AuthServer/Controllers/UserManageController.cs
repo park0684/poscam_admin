@@ -3,6 +3,7 @@ using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.UserManage;
 using poscam.AuthServer.Models.Entities;
 using poscam.AuthServer.Models.Enums;
+using poscam.AuthServer.Repositories;
 using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
@@ -17,15 +18,24 @@ public class UserManageController : ControllerBase
     private readonly UserManageService _userManageService;
     private readonly AccountService _accountService;
     private readonly PartnerUserPermissionService _partnerUserPermissionService;
+    private readonly UserAccountRepository _userAccountRepository;
+    private readonly UserLogRepository _userLogRepository;
+    private readonly PasswordHashService _passwordHashService;
 
     public UserManageController(
         UserManageService userManageService,
         AccountService accountService,
-        PartnerUserPermissionService partnerUserPermissionService)
+        PartnerUserPermissionService partnerUserPermissionService,
+        UserAccountRepository userAccountRepository,
+        UserLogRepository userLogRepository,
+        PasswordHashService passwordHashService)
     {
         _userManageService = userManageService;
         _accountService = accountService;
         _partnerUserPermissionService = partnerUserPermissionService;
+        _userAccountRepository = userAccountRepository;
+        _userLogRepository = userLogRepository;
+        _passwordHashService = passwordHashService;
     }
 
     /// <summary>
@@ -233,7 +243,8 @@ public class UserManageController : ControllerBase
 
     /// <summary>
     /// 담당자 비밀번호 초기화.
-    /// 현재 단계에서는 기존 System/Admin 전용 서비스 정책을 유지한다.
+    /// System/Admin은 기존 관리자 권한 정책을 사용하고,
+    /// PartnerUser는 권한 9와 동일 파트너사 범위를 확인한다.
     /// </summary>
     [HttpPost("{userCode:int}/password-reset")]
     [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
@@ -250,10 +261,22 @@ public class UserManageController : ControllerBase
                 loginUserResult.Message));
         }
 
+        var loginUser = loginUserResult.Data;
+
+        if ((UserRole)loginUser.UserRole == UserRole.PartnerUser)
+        {
+            var partnerResult = await ResetPasswordByPartnerUserAsync(
+                userCode,
+                request,
+                loginUser);
+
+            return Ok(partnerResult);
+        }
+
         var result = await _userManageService.ResetPasswordAsync(
             userCode,
             request,
-            loginUserResult.Data);
+            loginUser);
 
         return Ok(result);
     }
@@ -332,6 +355,114 @@ public class UserManageController : ControllerBase
             loginUserResult.Data);
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// PartnerUserPasswordReset(9) 권한이 있는 PartnerUser가
+    /// 같은 파트너사의 다른 PartnerUser 비밀번호를 초기화한다.
+    /// </summary>
+    private async Task<ApiResponse<bool>> ResetPasswordByPartnerUserAsync(
+        int userCode,
+        UserPasswordChangeRequest request,
+        UserAccount loginUser)
+    {
+        var permissionResult = await _partnerUserPermissionService.CheckPermissionAsync(
+            loginUser,
+            PartnerUserPermissionType.PartnerUserPasswordReset);
+
+        if (!permissionResult.Success)
+        {
+            return ApiResponse<bool>.Fail(
+                permissionResult.ErrorCode,
+                permissionResult.Message);
+        }
+
+        if (userCode <= 0)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 코드가 올바르지 않습니다.");
+        }
+
+        if (userCode == loginUser.UserCode)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "본인 비밀번호는 내 비밀번호 변경 기능을 사용하세요.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "새 비밀번호를 입력하세요.");
+        }
+
+        if (loginUser.PartnerCode == null || loginUser.PartnerCode <= 0)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 계정에 파트너사가 지정되어 있지 않습니다.");
+        }
+
+        var targetUser = await _userAccountRepository.GetManageUserDetailAsync(userCode);
+
+        if (targetUser == null ||
+            targetUser.UserRole != (int)UserRole.PartnerUser)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "담당자 정보를 찾을 수 없습니다.");
+        }
+
+        if (targetUser.PartnerCode != loginUser.PartnerCode.Value)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "본인 파트너사의 담당자 비밀번호만 초기화할 수 있습니다.");
+        }
+
+        var passwordHash = _passwordHashService.HashPassword(request.NewPassword);
+
+        var affected = await _userAccountRepository.UpdatePasswordAsync(
+            userCode,
+            passwordHash);
+
+        if (affected <= 0)
+        {
+            return ApiResponse<bool>.Fail(
+                AuthErrorCode.InvalidLogin,
+                "비밀번호가 변경되지 않았습니다.");
+        }
+
+        var memo = string.IsNullOrWhiteSpace(request.Memo)
+            ? "파트너 담당자에 의한 비밀번호 초기화"
+            : request.Memo;
+
+        await _userLogRepository.InsertAsync(new UserLog
+        {
+            UserCode = targetUser.UserCode,
+            PartnerCode = targetUser.PartnerCode,
+            UlogType = (int)UserLogType.PasswordReset,
+            UlogRequestType = (int)UserRequestType.PasswordReset,
+            UlogRequestStatus = (int)UserRequestStatus.Completed,
+            UlogMemo = memo,
+            UlogProcessedBy = loginUser.UserCode,
+            UlogProcessedAt = DateTime.Now
+        });
+
+        if (targetUser.UserRequestType == (int)UserRequestType.PasswordReset &&
+            targetUser.UserRequestStatus == (int)UserRequestStatus.Pending)
+        {
+            await _userAccountRepository.CompleteLatestRequestAsync(
+                userCode,
+                (int)UserRequestType.PasswordReset,
+                memo);
+        }
+
+        return ApiResponse<bool>.Ok(
+            true,
+            "비밀번호가 초기화되었습니다.");
     }
 
     /// <summary>
