@@ -16,7 +16,9 @@ public class MenuAccessFilterTests
 
         var result = filter.Filter(MenuConfiguration.GetMenus(), access);
 
-        var storeMenu = Assert.Single(result.Where(menu => menu.Key == "stores"));
+        var storeMenu = Assert.Single(
+            result,
+            menu => menu.Key == "stores");
         Assert.Single(storeMenu.Children);
         Assert.Equal("store-list", storeMenu.Children[0].Key);
     }
@@ -70,7 +72,9 @@ public class MenuAccessFilterTests
 
         Assert.DoesNotContain(result, menu => menu.Key == "updates");
 
-        var partnerMenu = Assert.Single(result.Where(menu => menu.Key == "partners"));
+        var partnerMenu = Assert.Single(
+            result,
+            menu => menu.Key == "partners");
         Assert.DoesNotContain(
             partnerMenu.Children,
             menu => menu.Key == "partner-user-permissions");
