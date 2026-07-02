@@ -5,7 +5,6 @@
 @using poscam.AdminWeb.Models.Device
 @using poscam.AdminWeb.Models.Store
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
-@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
 @inject poscam.AdminWeb.Services.CurrentUserAccessService CurrentUserAccessService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
@@ -164,11 +163,8 @@
     private const int DeviceManagePermissionCode = 13;
 
     private bool _isLoading = true;
-
     private bool _isResetting;
-
     private bool _canResetDevices;
-
     private bool _isSuccessMessage;
 
     private string? _message;
@@ -176,7 +172,6 @@
     private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
 
     private List<StoreDeviceDto> _pccams = new();
-
     private List<StoreDeviceDto> _viewers = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -196,27 +191,25 @@
 
     private async Task LoadResetPermissionAsync()
     {
-        var userRole = await AuthStateService.GetUserRoleAsync();
+        var accessResult = await CurrentUserAccessService.GetCurrentAccessAsync();
 
-        if (userRole is SystemRole or PartnerUserRole)
-        {
-            _canResetDevices = true;
-            return;
-        }
-
-        if (userRole != AdminRole)
+        if (!accessResult.Success || accessResult.Data == null)
         {
             _canResetDevices = false;
             return;
         }
 
-        var accessResult = await CurrentUserAccessService.GetCurrentAccessAsync();
+        var access = accessResult.Data;
 
-        _canResetDevices = accessResult.Success
-                           && accessResult.Data != null
-                           && accessResult.Data.UserRole == AdminRole
-                           && accessResult.Data.PermissionCodes.Contains(
-                               DeviceManagePermissionCode);
+        if (access.UserRole == SystemRole)
+        {
+            _canResetDevices = true;
+            return;
+        }
+
+        _canResetDevices =
+            access.UserRole is AdminRole or PartnerUserRole &&
+            access.PermissionCodes.Contains(DeviceManagePermissionCode);
     }
 
     private async Task LoadDevicesAsync()
