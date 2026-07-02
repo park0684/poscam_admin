@@ -6,14 +6,14 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Docker Compose¿¡¼­ /run/secrets¿¡ ¸¶¿îÆ®ÇÑ Secret ÆÄÀÏÀ»
-// ASP.NET Core ±¸¼º°ªÀ¸·Î ÀĞ´Â´Ù.
-// ·ÎÄÃ Windows °³¹ßÈ¯°æ¿¡´Â ÇØ´ç °æ·Î°¡ ¾øÀ¸¹Ç·Î optional=true·Î Ã³¸®ÇÑ´Ù.
+// Docker Composeì—ì„œ /run/secretsì— ë§ˆìš´íŠ¸í•œ Secret íŒŒì¼ì„
+// ASP.NET Core êµ¬ì„±ê°’ìœ¼ë¡œ ì½ëŠ”ë‹¤.
+// ë¡œì»¬ Windows ê°œë°œí™˜ê²½ì—ëŠ” í•´ë‹¹ ê²½ë¡œê°€ ì—†ìœ¼ë¯€ë¡œ optional=trueë¡œ ì²˜ë¦¬í•œë‹¤.
 builder.Configuration.AddKeyPerFile(
     directoryPath: "/run/secrets",
     optional: true);
 
-// Dapper¿¡¼­ store_code ¡æ StoreCode ÇüÅÂÀÇ ¸ÅÇÎÀ» Çã¿ëÇÑ´Ù.
+// Dapperì—ì„œ store_code â†’ StoreCode í˜•íƒœì˜ ë§¤í•‘ì„ í—ˆìš©í•œë‹¤.
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 builder.Services.Configure<AuthPolicyOptions>(
@@ -21,7 +21,7 @@ builder.Services.Configure<AuthPolicyOptions>(
 
 builder.Services.AddSingleton<IDbContext, DapperContext>();
 
-// Repository µî·Ï
+// Repository ë“±ë¡
 builder.Services.AddScoped<StoreRepository>();
 builder.Services.AddScoped<ContractRepository>();
 builder.Services.AddScoped<LicenseKeyRepository>();
@@ -54,6 +54,7 @@ builder.Services.AddScoped<LicenseManageService>();
 builder.Services.AddScoped<ConfigManageService>();
 builder.Services.AddScoped<UserManageService>();
 builder.Services.AddScoped<SettlementService>();
+builder.Services.AddScoped<SettlementAccessService>();
 builder.Services.AddScoped<AdminPermissionService>();
 builder.Services.AddScoped<AdminAccountManageService>();
 
@@ -64,12 +65,12 @@ builder.Services.AddScoped<ViewerAuthService>();
 builder.Services.AddScoped<ConfigService>();
 builder.Services.AddScoped<DeviceService>();
 
-//swagger Å×½ºÆ®¸¦ À§ÇÑ ÀÓ½Ã ¼öÁ¤
+//swagger í…ŒìŠ¤íŠ¸ë¥¼ ìœ„í•œ ì„ì‹œ ìˆ˜ì •
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "°ü¸®ÀÚ ·Î±×ÀÎ ÈÄ ¹ß±Ş¹ŞÀº ÅäÅ«À» ÀÔ·ÂÇÏ¼¼¿ä.",
+        Description = "ê´€ë¦¬ì ë¡œê·¸ì¸ í›„ ë°œê¸‰ë°›ì€ í† í°ì„ ì…ë ¥í•˜ì„¸ìš”.",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
