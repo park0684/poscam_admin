@@ -269,7 +269,7 @@
         {
             var userRole = await AuthStateService.GetUserRoleAsync();
 
-            _isAdmin = userRole == 1;
+            _isAdmin = userRole is 0 or 1;
             _isPartnerUser = userRole == 2;
             _loginPartnerCode = await AuthStateService.GetPartnerCodeAsync();
 

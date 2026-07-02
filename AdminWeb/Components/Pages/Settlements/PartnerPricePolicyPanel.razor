@@ -291,7 +291,7 @@
         // 관리자: 등록/수정 가능
         // 담당자: 조회만 가능
         var role = await AuthStateService.GetUserRoleAsync();
-        _isAdmin = role == 1;
+        _isAdmin = role is 0 or 1;
 
         // 팝업은 특정 파트너사 전용이므로 PartnerCode를 초기값에 고정합니다.
         ResetForm();

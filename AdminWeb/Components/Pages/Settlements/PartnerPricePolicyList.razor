@@ -256,7 +256,7 @@
         }
 
         var role = await AuthStateService.GetUserRoleAsync();
-        _isAdmin = role == 1;
+        _isAdmin = role is 0 or 1;
 
         if (_isAdmin)
         {

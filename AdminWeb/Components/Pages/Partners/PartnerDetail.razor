@@ -206,7 +206,7 @@
         }
 
         var role = await AuthStateService.GetUserRoleAsync();
-        _isAdmin = role == 1;
+        _isAdmin = role is 0 or 1;
 
         // 관리자가 아니면 상세 조회나 입력폼 표시 없이 권한 안내만 보여준다.
         if (!_isAdmin)
