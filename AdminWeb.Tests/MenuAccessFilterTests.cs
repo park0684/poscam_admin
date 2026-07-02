@@ -60,6 +60,40 @@ public class MenuAccessFilterTests
     }
 
     [Fact]
+    public void Filter_PartnerUserWithManagePermission_ShowsUserMenu()
+    {
+        var filter = new MenuAccessFilter();
+        var access = CreateAccess(
+            CurrentUserAccessPolicy.PartnerUserRole,
+            CurrentUserAccessPolicy.PartnerUserManagePermissionCode);
+
+        var result = filter.Filter(MenuConfiguration.GetMenus(), access);
+
+        var partnerMenu = Assert.Single(
+            result,
+            menu => menu.Key == "partners");
+        Assert.Contains(
+            partnerMenu.Children,
+            menu => menu.Key == "user-list");
+    }
+
+    [Fact]
+    public void Filter_PartnerUserWithoutManagePermission_HidesUserMenu()
+    {
+        var filter = new MenuAccessFilter();
+        var access = CreateAccess(CurrentUserAccessPolicy.PartnerUserRole);
+
+        var result = filter.Filter(MenuConfiguration.GetMenus(), access);
+
+        var partnerMenu = Assert.Single(
+            result,
+            menu => menu.Key == "partners");
+        Assert.DoesNotContain(
+            partnerMenu.Children,
+            menu => menu.Key == "user-list");
+    }
+
+    [Fact]
     public void Filter_PartnerUserCannotSeeAdminOnlyPermissionMenu()
     {
         var filter = new MenuAccessFilter();
