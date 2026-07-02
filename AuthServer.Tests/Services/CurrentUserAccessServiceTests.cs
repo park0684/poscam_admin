@@ -117,6 +117,14 @@ public class CurrentUserAccessServiceTests
         public int CallCount { get; private set; }
         public int? LastUserCode { get; private set; }
 
+        public Task<bool> ExistsPermissionAsync(
+            int userCode,
+            PartnerUserPermissionType permission)
+        {
+            return Task.FromResult(
+                _permissionCodes.Contains((int)permission));
+        }
+
         public Task<List<int>> GetPermissionCodesAsync(int userCode)
         {
             CallCount++;
