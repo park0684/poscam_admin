@@ -7,15 +7,19 @@ using poscam.AuthServer.Repositories;
 namespace poscam.AuthServer.Services;
 
 /// <summary>
-/// 현재 로그인 사용자의 역할과 관리자 세부 권한을 조회한다.
+/// 현재 로그인 사용자의 역할과 세부 권한을 조회한다.
 /// </summary>
 public class CurrentUserAccessService
 {
-    private readonly IAdminUserPermissionReader _permissionReader;
+    private readonly IAdminUserPermissionReader _adminPermissionReader;
+    private readonly IPartnerUserPermissionReader _partnerPermissionReader;
 
-    public CurrentUserAccessService(IAdminUserPermissionReader permissionReader)
+    public CurrentUserAccessService(
+        IAdminUserPermissionReader adminPermissionReader,
+        IPartnerUserPermissionReader partnerPermissionReader)
     {
-        _permissionReader = permissionReader;
+        _adminPermissionReader = adminPermissionReader;
+        _partnerPermissionReader = partnerPermissionReader;
     }
 
     public async Task<ApiResponse<CurrentUserAccessResponse>> GetCurrentAccessAsync(
@@ -31,25 +35,30 @@ public class CurrentUserAccessService
         var userRole = (UserRole)loginUser.UserRole;
         var permissionCodes = new List<int>();
 
-        if (userRole == UserRole.Admin)
+        try
         {
-            try
+            if (userRole == UserRole.Admin)
             {
-                permissionCodes = await _permissionReader.GetPermissionCodesAsync(
+                permissionCodes = await _adminPermissionReader.GetPermissionCodesAsync(
                     loginUser.UserCode);
             }
-            catch
+            else if (userRole == UserRole.PartnerUser)
+            {
+                permissionCodes = await _partnerPermissionReader.GetPermissionCodesAsync(
+                    loginUser.UserCode);
+            }
+            else if (userRole != UserRole.System)
             {
                 return ApiResponse<CurrentUserAccessResponse>.Fail(
-                    AuthErrorCode.DatabaseError,
-                    "현재 사용자 권한을 조회하는 중 데이터베이스 오류가 발생했습니다.");
+                    AuthErrorCode.InvalidLogin,
+                    "사용자 권한이 올바르지 않습니다.");
             }
         }
-        else if (userRole != UserRole.System && userRole != UserRole.PartnerUser)
+        catch
         {
             return ApiResponse<CurrentUserAccessResponse>.Fail(
-                AuthErrorCode.InvalidLogin,
-                "사용자 권한이 올바르지 않습니다.");
+                AuthErrorCode.DatabaseError,
+                "현재 사용자 권한을 조회하는 중 데이터베이스 오류가 발생했습니다.");
         }
 
         return ApiResponse<CurrentUserAccessResponse>.Ok(
@@ -59,6 +68,9 @@ public class CurrentUserAccessService
                 UserName = loginUser.UserName,
                 UserRole = loginUser.UserRole,
                 PermissionCodes = permissionCodes
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList()
             },
             "현재 사용자 접근정보를 조회했습니다.");
     }
