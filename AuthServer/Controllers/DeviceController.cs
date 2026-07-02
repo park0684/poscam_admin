@@ -19,15 +19,18 @@ public class DeviceController : ControllerBase
     private readonly DeviceService _deviceService;
     private readonly AccountService _accountService;
     private readonly AdminPermissionService _adminPermissionService;
+    private readonly PartnerUserPermissionService _partnerUserPermissionService;
 
     public DeviceController(
         DeviceService deviceService,
         AccountService accountService,
-        AdminPermissionService adminPermissionService)
+        AdminPermissionService adminPermissionService,
+        PartnerUserPermissionService partnerUserPermissionService)
     {
         _deviceService = deviceService;
         _accountService = accountService;
         _adminPermissionService = adminPermissionService;
+        _partnerUserPermissionService = partnerUserPermissionService;
     }
 
     /// <summary>
@@ -36,7 +39,7 @@ public class DeviceController : ControllerBase
     /// 권한 정책:
     /// - System: 모든 장비 초기화 가능
     /// - Admin: DeviceManage 권한이 있어야 초기화 가능
-    /// - PartnerUser: DeviceService의 매장 접근 범위 내 장비만 초기화 가능
+    /// - PartnerUser: DeviceManage 권한과 DeviceService의 매장 접근 범위를 모두 만족해야 가능
     ///
     /// 일반 사용자는 이 API를 사용할 수 없다.
     /// 일반 사용자의 캠뷰어 장비 해제는 /api/viewer/devices/release를 사용한다.
@@ -58,25 +61,33 @@ public class DeviceController : ControllerBase
         var loginUser = loginUserResult.Data;
         var loginUserRole = (UserRole)loginUser.UserRole;
 
+        ApiResponse<bool> permissionResult;
+
         if (loginUserRole == UserRole.System ||
             loginUserRole == UserRole.Admin)
         {
-            var permissionResult = await _adminPermissionService.CheckPermissionAsync(
+            permissionResult = await _adminPermissionService.CheckPermissionAsync(
                 loginUser,
                 AdminPermissionType.DeviceManage);
-
-            if (!permissionResult.Success)
-            {
-                return Ok(ApiResponse<DeviceResetResponse>.Fail(
-                    permissionResult.ErrorCode,
-                    permissionResult.Message));
-            }
         }
-        else if (loginUserRole != UserRole.PartnerUser)
+        else if (loginUserRole == UserRole.PartnerUser)
+        {
+            permissionResult = await _partnerUserPermissionService.CheckPermissionAsync(
+                loginUser,
+                PartnerUserPermissionType.DeviceManage);
+        }
+        else
         {
             return Ok(ApiResponse<DeviceResetResponse>.Fail(
                 AuthErrorCode.PermissionDenied,
                 "장비 관리 기능을 사용할 권한이 없습니다."));
+        }
+
+        if (!permissionResult.Success)
+        {
+            return Ok(ApiResponse<DeviceResetResponse>.Fail(
+                permissionResult.ErrorCode,
+                permissionResult.Message));
         }
 
         var result = await _deviceService.ResetDeviceAsync(
