@@ -6,14 +6,10 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Docker Compose에서 /run/secrets에 마운트한 Secret 파일을
-// ASP.NET Core 구성값으로 읽는다.
-// 로컬 Windows 개발환경에는 해당 경로가 없으므로 optional=true로 처리한다.
 builder.Configuration.AddKeyPerFile(
     directoryPath: "/run/secrets",
     optional: true);
 
-// Dapper에서 store_code → StoreCode 형태의 매핑을 허용한다.
 DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 builder.Services.Configure<AuthPolicyOptions>(
@@ -21,7 +17,6 @@ builder.Services.Configure<AuthPolicyOptions>(
 
 builder.Services.AddSingleton<IDbContext, DapperContext>();
 
-// Repository 등록
 builder.Services.AddScoped<StoreRepository>();
 builder.Services.AddScoped<ContractRepository>();
 builder.Services.AddScoped<LicenseKeyRepository>();
@@ -38,9 +33,8 @@ builder.Services.AddScoped<PartnerPricePolicyRepository>();
 builder.Services.AddScoped<ContractBillingRepository>();
 builder.Services.AddScoped<BillingPaymentRepository>();
 builder.Services.AddScoped<AdminUserPermissionRepository>();
+builder.Services.AddScoped<PartnerUserPermissionRepository>();
 
-
-// Service
 builder.Services.AddScoped<LicenseKeyService>();
 builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<PasswordHashService>();
@@ -57,6 +51,7 @@ builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<SettlementAccessService>();
 builder.Services.AddScoped<AdminPermissionService>();
 builder.Services.AddScoped<AdminAccountManageService>();
+builder.Services.AddScoped<PartnerUserPermissionManageService>();
 
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<AdminService>();
@@ -65,7 +60,6 @@ builder.Services.AddScoped<ViewerAuthService>();
 builder.Services.AddScoped<ConfigService>();
 builder.Services.AddScoped<DeviceService>();
 
-//swagger 테스트를 위한 임시 수정
 builder.Services.AddSwaggerGen(options =>
 {
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -96,7 +90,6 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-
 
 var app = builder.Build();
 
