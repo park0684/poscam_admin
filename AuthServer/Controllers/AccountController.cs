@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using poscam.AuthServer.Models.Dtos.Account;
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Entities;
@@ -8,12 +8,6 @@ using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
 
-/// <summary>
-/// 관리자/담당자 계정 API Controller.
-/// 
-/// 담당자 회원가입, 관리자/담당자 로그인,
-/// 승인 대기 목록 조회, 담당자 승인/차단/일시중지를 담당한다.
-/// </summary>
 [ApiController]
 public class AccountController : ControllerBase
 {
@@ -22,18 +16,15 @@ public class AccountController : ControllerBase
 
     public AccountController(
         AccountService accountService,
-        AdminUserPermissionRepository adminUserPermissionRepository)
+        AdminUserPermissionRepository adminUserPermissionRepository,
+        PartnerUserPermissionRepository partnerUserPermissionRepository)
     {
         _accountService = accountService;
         _currentUserAccessService = new CurrentUserAccessService(
-            adminUserPermissionRepository);
+            adminUserPermissionRepository,
+            partnerUserPermissionRepository);
     }
 
-    /// <summary>
-    /// 담당자 회원가입 API.
-    /// 
-    /// 담당자는 가입 후 관리자 승인을 받아야 로그인할 수 있다.
-    /// </summary>
     [HttpPost("api/accounts/register")]
     [ProducesResponseType(typeof(ApiResponse<UserRegisterResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<UserRegisterResponse>>> Register(
@@ -43,11 +34,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 관리자/담당자 로그인 API.
-    /// 
-    /// 정상 승인된 계정이면 관리자 웹 API 호출용 토큰을 발급한다.
-    /// </summary>
     [HttpPost("api/accounts/login")]
     [ProducesResponseType(typeof(ApiResponse<UserLoginResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<UserLoginResponse>>> Login(
@@ -57,10 +43,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 현재 로그인 사용자의 역할과 관리자 세부 권한을 조회한다.
-    /// 자신의 접근정보 조회이므로 별도 관리자 권한을 요구하지 않는다.
-    /// </summary>
     [HttpGet("api/accounts/me/access")]
     [ProducesResponseType(typeof(ApiResponse<CurrentUserAccessResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<CurrentUserAccessResponse>), StatusCodes.Status401Unauthorized)]
@@ -105,13 +87,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 승인 대기 사용자 목록 조회 API.
-    /// 
-    /// 관리자만 호출할 수 있다.
-    /// Authorization: Bearer {accountToken}
-    /// </summary>
-    /// 
     [Obsolete("신규 담당자 관리는 UserManageController/UserManageService 기준 API를 사용하세요.")]
     [HttpGet("api/admin/users/pending")]
     [ProducesResponseType(typeof(ApiResponse<List<UserPendingListItemDto>>), StatusCodes.Status200OK)]
@@ -137,12 +112,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 담당자 승인 API.
-    /// 
-    /// 관리자만 호출할 수 있다.
-    /// ApprovedBy 값은 요청 Body가 아니라 로그인 토큰의 관리자 user_code를 사용한다.
-    /// </summary>
     [Obsolete("신규 담당자 관리는 UserManageController/UserManageService 기준 API를 사용하세요.")]
     [HttpPost("api/admin/users/approve")]
     [ProducesResponseType(typeof(ApiResponse<UserApproveResponse>), StatusCodes.Status200OK)]
@@ -171,12 +140,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 담당자 차단 API.
-    /// 
-    /// 관리자만 호출할 수 있다.
-    /// 차단된 사용자는 로그인할 수 없다.
-    /// </summary>
     [Obsolete("신규 담당자 관리는 UserManageController/UserManageService 기준 API를 사용하세요.")]
     [HttpPost("api/admin/users/{userCode:int}/block")]
     [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
@@ -202,11 +165,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 담당자 일시중지 API.
-    /// 
-    /// 관리자만 호출할 수 있다.
-    /// </summary>
     [Obsolete("신규 담당자 관리는 UserManageController/UserManageService 기준 API를 사용하세요.")]
     [HttpPost("api/admin/users/{userCode:int}/suspend")]
     [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
@@ -232,12 +190,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Authorization 헤더의 Bearer 토큰으로 로그인 사용자를 확인한다.
-    /// 
-    /// AccountService 내부에서 토큰 검증 후 users 테이블을 다시 조회하여
-    /// 현재도 Active 상태인지 확인한다.
-    /// </summary>
     private async Task<ApiResponse<UserAccount>> GetLoginUserAsync()
     {
         var authorizationHeader = Request.Headers.Authorization.FirstOrDefault();
@@ -245,12 +197,6 @@ public class AccountController : ControllerBase
         return await _accountService.GetLoginUserByTokenAsync(authorizationHeader);
     }
 
-    /// <summary>
-    /// 활성 담당자 목록 조회 API.
-    /// 
-    /// 매장 담당자 배정 화면에서 사용한다.
-    /// 관리자만 호출할 수 있다.
-    /// </summary>
     [HttpGet("api/admin/users/active")]
     [ProducesResponseType(typeof(ApiResponse<List<UserListItemDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<List<UserListItemDto>>>> GetActiveUsers()
@@ -265,7 +211,7 @@ public class AccountController : ControllerBase
         }
 
         if (loginUserResult.Data.UserRole != (int)UserRole.System &&
-    loginUserResult.Data.UserRole != (int)UserRole.Admin)
+            loginUserResult.Data.UserRole != (int)UserRole.Admin)
         {
             return Ok(ApiResponse<List<UserListItemDto>>.Fail(
                 AuthErrorCode.PermissionDenied,
@@ -276,15 +222,6 @@ public class AccountController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// 특정 파트너사 내 활성 담당자 목록 조회 API.
-    /// 
-    /// 관리자:
-    /// - 모든 파트너사 담당자 조회 가능
-    /// 
-    /// 담당자:
-    /// - 본인 소속 파트너사의 담당자만 조회 가능
-    /// </summary>
     [HttpGet("api/manage/partners/{partnerCode:int}/users/active")]
     [ProducesResponseType(typeof(ApiResponse<List<UserListItemDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<List<UserListItemDto>>>> GetActiveUsersByPartner(
