@@ -6,7 +6,7 @@ namespace poscam.AuthServer.Tests.Models;
 public class AdminPermissionTypeTests
 {
     [Fact]
-    public void PermissionCodes_PreserveExistingValuesAndAddUpdateManageAsTwelve()
+    public void PermissionCodes_PreserveExistingValuesAndAddDeviceManageAsThirteen()
     {
         var expected = new Dictionary<AdminPermissionType, int>
         {
@@ -21,7 +21,8 @@ public class AdminPermissionTypeTests
             [AdminPermissionType.PartnerUserPasswordReset] = 9,
             [AdminPermissionType.ContractManage] = 10,
             [AdminPermissionType.LicenseManage] = 11,
-            [AdminPermissionType.UpdateManage] = 12
+            [AdminPermissionType.UpdateManage] = 12,
+            [AdminPermissionType.DeviceManage] = 13
         };
 
         var actual = Enum.GetValues<AdminPermissionType>();
@@ -34,6 +35,8 @@ public class AdminPermissionTypeTests
             Assert.Equal(expectedCode, (int)permission);
         }
 
-        Assert.Equal(actual.Length, actual.Select(permission => (int)permission).Distinct().Count());
+        Assert.Equal(
+            actual.Length,
+            actual.Select(permission => (int)permission).Distinct().Count());
     }
 }
