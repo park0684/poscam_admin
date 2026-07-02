@@ -4,7 +4,7 @@ namespace poscam.AdminWeb.Services;
 
 /// <summary>
 /// AdminWeb에서 현재 사용자 접근정보를 해석하는 순수 정책.
-/// 실제 보안 경계는 UpdateServer의 매 요청 AuthServer 권한 확인이며,
+/// 실제 보안 경계는 각 백엔드 API의 권한 검증이며,
 /// 이 정책은 메뉴와 화면을 사전에 숨기기 위한 보조 UI 경계이다.
 /// </summary>
 public static class CurrentUserAccessPolicy
@@ -12,9 +12,28 @@ public static class CurrentUserAccessPolicy
     public const int SystemRole = 0;
     public const int AdminRole = 1;
     public const int PartnerUserRole = 2;
+
+    public const int PartnerUserManagePermissionCode = 5;
     public const int UpdateManagePermissionCode = 12;
 
+    public static bool CanManagePartnerUserPermissions(
+        CurrentUserAccessResponse? access)
+    {
+        return CanUseAdminPermission(
+            access,
+            PartnerUserManagePermissionCode);
+    }
+
     public static bool CanManageUpdates(CurrentUserAccessResponse? access)
+    {
+        return CanUseAdminPermission(
+            access,
+            UpdateManagePermissionCode);
+    }
+
+    private static bool CanUseAdminPermission(
+        CurrentUserAccessResponse? access,
+        int permissionCode)
     {
         if (access is null)
         {
@@ -27,6 +46,6 @@ public static class CurrentUserAccessPolicy
         }
 
         return access.UserRole == AdminRole
-               && access.PermissionCodes.Contains(UpdateManagePermissionCode);
+               && access.PermissionCodes.Contains(permissionCode);
     }
 }
