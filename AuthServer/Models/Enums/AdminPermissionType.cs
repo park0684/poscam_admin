@@ -1,8 +1,8 @@
-﻿namespace poscam.AuthServer.Models.Enums;
+namespace poscam.AuthServer.Models.Enums;
 
 /// <summary>
 /// 관리자 세부 권한 코드.
-/// 
+///
 /// DB에는 숫자 값만 저장한다.
 /// 권한명과 의미는 백엔드 코드에서만 관리한다.
 /// </summary>
@@ -66,5 +66,10 @@ public enum AdminPermissionType
     /// <summary>
     /// 프로그램 릴리스 등록, 패키지 업로드, 게시 및 배포 중지 권한.
     /// </summary>
-    UpdateManage = 12
+    UpdateManage = 12,
+
+    /// <summary>
+    /// PC캠 및 캠뷰어 장비 초기화 권한.
+    /// </summary>
+    DeviceManage = 13
 }
