@@ -1,10 +1,12 @@
-﻿@rendermode InteractiveServer
+@rendermode InteractiveServer
 
 @using Microsoft.JSInterop
 @using poscam.AdminWeb.Models.Common
 @using poscam.AdminWeb.Models.Device
 @using poscam.AdminWeb.Models.Store
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject poscam.AdminWeb.Services.CurrentUserAccessService CurrentUserAccessService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 
@@ -67,11 +69,18 @@
                                     <td>@device.HwidMasked</td>
                                     <td>@(device.RegisteredAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-danger"
-                                                @onclick="() => ResetDeviceAsync(device, true)"
-                                                disabled="@_isResetting">
-                                            초기화
-                                        </button>
+                                        @if (_canResetDevices)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => ResetDeviceAsync(device, true)"
+                                                    disabled="@_isResetting">
+                                                초기화
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">권한 없음</span>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -114,11 +123,18 @@
                                     <td>@device.HwidMasked</td>
                                     <td>@(device.RegisteredAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-danger"
-                                                @onclick="() => ResetDeviceAsync(device, false)"
-                                                disabled="@_isResetting">
-                                            초기화
-                                        </button>
+                                        @if (_canResetDevices)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => ResetDeviceAsync(device, false)"
+                                                    disabled="@_isResetting">
+                                                초기화
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">권한 없음</span>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -127,10 +143,13 @@
                 }
             </div>
 
-            <div class="alert alert-secondary mt-3 mb-0">
-                PC캠 초기화 시 연결된 라이선스가 재등록 가능한 상태로 변경됩니다.
-                캠뷰어 초기화 시 해당 장비의 기존 토큰은 더 이상 사용할 수 없습니다.
-            </div>
+            @if (_canResetDevices)
+            {
+                <div class="alert alert-secondary mt-3 mb-0">
+                    PC캠 초기화 시 연결된 라이선스가 재등록 가능한 상태로 변경됩니다.
+                    캠뷰어 초기화 시 해당 장비의 기존 토큰은 더 이상 사용할 수 없습니다.
+                </div>
+            }
         }
     </div>
 </div>
@@ -139,9 +158,16 @@
     [Parameter]
     public int StoreCode { get; set; }
 
+    private const int SystemRole = 0;
+    private const int AdminRole = 1;
+    private const int PartnerUserRole = 2;
+    private const int DeviceManagePermissionCode = 13;
+
     private bool _isLoading = true;
 
     private bool _isResetting;
+
+    private bool _canResetDevices;
 
     private bool _isSuccessMessage;
 
@@ -160,11 +186,37 @@
             return;
         }
 
+        await LoadResetPermissionAsync();
         await LoadDevicesAsync();
 
         _isLoading = false;
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadResetPermissionAsync()
+    {
+        var userRole = await AuthStateService.GetUserRoleAsync();
+
+        if (userRole is SystemRole or PartnerUserRole)
+        {
+            _canResetDevices = true;
+            return;
+        }
+
+        if (userRole != AdminRole)
+        {
+            _canResetDevices = false;
+            return;
+        }
+
+        var accessResult = await CurrentUserAccessService.GetCurrentAccessAsync();
+
+        _canResetDevices = accessResult.Success
+                           && accessResult.Data != null
+                           && accessResult.Data.UserRole == AdminRole
+                           && accessResult.Data.PermissionCodes.Contains(
+                               DeviceManagePermissionCode);
     }
 
     private async Task LoadDevicesAsync()
@@ -203,6 +255,12 @@
 
     private async Task ResetDeviceAsync(StoreDeviceDto device, bool isPccam)
     {
+        if (!_canResetDevices)
+        {
+            SetWarning("장비를 초기화할 권한이 없습니다.");
+            return;
+        }
+
         _message = null;
 
         var deviceTypeName = isPccam ? "PC캠" : "캠뷰어";
