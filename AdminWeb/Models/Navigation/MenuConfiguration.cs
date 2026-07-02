@@ -21,6 +21,14 @@ public static class MenuConfiguration
                 Key = "stores",
                 Title = "매장관리",
                 Order = 10,
+                Roles = new List<int>
+                {
+                    CurrentUserAccessPolicy.SystemRole,
+                    CurrentUserAccessPolicy.AdminRole,
+                    CurrentUserAccessPolicy.PartnerUserRole
+                },
+                RequiredPermissionCode =
+                    CurrentUserAccessPolicy.StoreManagePermissionCode,
                 Children = new List<MenuItem>
                 {
                     new MenuItem
@@ -28,7 +36,15 @@ public static class MenuConfiguration
                         Key = "store-list",
                         Title = "매장 목록",
                         Url = "stores",
-                        Order = 1
+                        Order = 1,
+                        Roles = new List<int>
+                        {
+                            CurrentUserAccessPolicy.SystemRole,
+                            CurrentUserAccessPolicy.AdminRole,
+                            CurrentUserAccessPolicy.PartnerUserRole
+                        },
+                        RequiredPermissionCode =
+                            CurrentUserAccessPolicy.StoreManagePermissionCode
                     }
                 }
             },
