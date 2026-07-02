@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using poscam.AuthServer.Models.Dtos.Store;
 using poscam.AuthServer.Models.Entities;
 using poscam.AuthServer.Models.Enums;
@@ -7,7 +7,7 @@ namespace poscam.AuthServer.Repositories;
 
 /// <summary>
 /// store_user_assignments 테이블 접근 Repository.
-/// 
+///
 /// 매장과 담당자 연결 정보를 관리한다.
 /// 담당자가 볼 수 있는 매장 범위를 결정하는 핵심 Repository다.
 /// </summary>
@@ -85,18 +85,25 @@ public class StoreAssignmentRepository : RepositoryBase
     }
 
     /// <summary>
-    /// 특정 사용자가 특정 매장에 접근할 수 있는지 확인한다.
-    /// 담당자 권한 체크에 사용한다.
-    /// 관리자는 이 메서드를 거치지 않고 전체 접근 허용 처리한다.
+    /// 특정 담당자가 소속된 파트너사가 특정 매장에 접근할 수 있는지 확인한다.
+    ///
+    /// 장비 관리처럼 파트너사 전체 매장 범위를 사용하는 기능에서 호출한다.
+    /// 개별 담당자 배정 여부가 아니라 로그인 사용자의 partner_code와
+    /// 매장에 연결된 활성 파트너 배정을 비교한다.
     /// </summary>
     public async Task<bool> CanAccessStoreAsync(int userCode, int storeCode)
     {
         const string sql = @"
         SELECT COUNT(1)
-        FROM store_user_assignments
-        WHERE user_code = @UserCode
-          AND store_code = @StoreCode
-          AND status = @ActiveStatus;
+        FROM users login_user
+        INNER JOIN store_user_assignments sua
+            ON sua.partner_code = login_user.partner_code
+        WHERE login_user.user_code = @UserCode
+          AND login_user.user_role = @PartnerUserRole
+          AND login_user.user_status = @ActiveUserStatus
+          AND login_user.partner_code IS NOT NULL
+          AND sua.store_code = @StoreCode
+          AND sua.status = @ActiveAssignmentStatus;
         ";
 
         var count = await WithConnectionAsync(conn =>
@@ -106,7 +113,9 @@ public class StoreAssignmentRepository : RepositoryBase
                 {
                     UserCode = userCode,
                     StoreCode = storeCode,
-                    ActiveStatus = (int)AssignmentStatus.Active
+                    PartnerUserRole = (int)UserRole.PartnerUser,
+                    ActiveUserStatus = (int)UserStatus.Active,
+                    ActiveAssignmentStatus = (int)AssignmentStatus.Active
                 }));
 
         return count > 0;
@@ -229,7 +238,7 @@ public class StoreAssignmentRepository : RepositoryBase
 
     /// <summary>
     /// 특정 사용자가 특정 매장에 특정 역할로 배정되어 있는지 확인한다.
-    /// 
+    ///
     /// 예:
     /// - MANAGE 역할 담당자만 PC캠 초기화 허용
     /// </summary>
@@ -245,7 +254,7 @@ public class StoreAssignmentRepository : RepositoryBase
           AND store_code = @StoreCode
           AND assignment_role = @AssignmentRole
           AND status = @ActiveStatus;
-";
+        ";
 
         var count = await WithConnectionAsync(conn =>
             conn.ExecuteScalarAsync<int>(
@@ -269,7 +278,7 @@ public class StoreAssignmentRepository : RepositoryBase
     {
         const string sql = @"
         SELECT
-            sua_code AS AssignmentCode,
+            sua_code        AS AssignmentCode,
             store_code      AS StoreCode,
             user_code       AS UserCode,
             partner_code    AS PartnerCode,
@@ -280,7 +289,7 @@ public class StoreAssignmentRepository : RepositoryBase
             assigned_at     AS AssignedAt
         FROM store_user_assignments
         WHERE sua_code = @AssignmentCode;
-";
+        ";
 
         return await WithConnectionAsync(conn =>
             conn.QueryFirstOrDefaultAsync<StoreUserAssignment>(
@@ -293,11 +302,11 @@ public class StoreAssignmentRepository : RepositoryBase
 
     /// <summary>
     /// 특정 매장의 대표 담당 파트너사 코드를 조회한다.
-    /// 
+    ///
     /// 계약은 파트너사 기준으로 관리되며,
     /// 매장과 연결된 계약을 생성할 경우
     /// 해당 매장의 대표 담당 파트너사 코드가 계약의 ConPartner가 된다.
-    /// 
+    ///
     /// 조회 기준:
     /// - 동일 매장(store_code)
     /// - 활성 배정(status = Active)
@@ -320,7 +329,7 @@ public class StoreAssignmentRepository : RepositoryBase
           AND partner_code IS NOT NULL
         ORDER BY assigned_at DESC, sua_code DESC
         LIMIT 1;
-    ";
+        ";
 
         return await WithConnectionAsync(conn =>
             conn.ExecuteScalarAsync<int?>(sql, new
