@@ -15,7 +15,6 @@ public static class MenuConfiguration
                 Url = "",
                 Order = 1
             },
-
             new MenuItem
             {
                 Key = "stores",
@@ -27,8 +26,7 @@ public static class MenuConfiguration
                     CurrentUserAccessPolicy.AdminRole,
                     CurrentUserAccessPolicy.PartnerUserRole
                 },
-                RequiredPermissionCode =
-                    CurrentUserAccessPolicy.StoreManagePermissionCode,
+                RequiredPermissionCode = CurrentUserAccessPolicy.StoreManagePermissionCode,
                 Children = new List<MenuItem>
                 {
                     new MenuItem
@@ -43,12 +41,10 @@ public static class MenuConfiguration
                             CurrentUserAccessPolicy.AdminRole,
                             CurrentUserAccessPolicy.PartnerUserRole
                         },
-                        RequiredPermissionCode =
-                            CurrentUserAccessPolicy.StoreManagePermissionCode
+                        RequiredPermissionCode = CurrentUserAccessPolicy.StoreManagePermissionCode
                     }
                 }
             },
-
             new MenuItem
             {
                 Key = "partners",
@@ -68,7 +64,14 @@ public static class MenuConfiguration
                         Key = "user-list",
                         Title = "담당자",
                         Url = "users",
-                        Order = 2
+                        Order = 2,
+                        Roles = new List<int>
+                        {
+                            CurrentUserAccessPolicy.SystemRole,
+                            CurrentUserAccessPolicy.AdminRole,
+                            CurrentUserAccessPolicy.PartnerUserRole
+                        },
+                        RequiredPermissionCode = CurrentUserAccessPolicy.PartnerUserManagePermissionCode
                     },
                     new MenuItem
                     {
@@ -81,12 +84,10 @@ public static class MenuConfiguration
                             CurrentUserAccessPolicy.SystemRole,
                             CurrentUserAccessPolicy.AdminRole
                         },
-                        RequiredPermissionCode =
-                            CurrentUserAccessPolicy.PartnerUserManagePermissionCode
+                        RequiredPermissionCode = CurrentUserAccessPolicy.PartnerUserManagePermissionCode
                     }
                 }
             },
-
             new MenuItem
             {
                 Key = "settlements",
@@ -150,8 +151,7 @@ public static class MenuConfiguration
                     CurrentUserAccessPolicy.SystemRole,
                     CurrentUserAccessPolicy.AdminRole
                 },
-                RequiredPermissionCode =
-                    CurrentUserAccessPolicy.UpdateManagePermissionCode,
+                RequiredPermissionCode = CurrentUserAccessPolicy.UpdateManagePermissionCode,
                 Children = new List<MenuItem>
                 {
                     new MenuItem
@@ -165,8 +165,7 @@ public static class MenuConfiguration
                             CurrentUserAccessPolicy.SystemRole,
                             CurrentUserAccessPolicy.AdminRole
                         },
-                        RequiredPermissionCode =
-                            CurrentUserAccessPolicy.UpdateManagePermissionCode
+                        RequiredPermissionCode = CurrentUserAccessPolicy.UpdateManagePermissionCode
                     },
                     new MenuItem
                     {
@@ -179,8 +178,7 @@ public static class MenuConfiguration
                             CurrentUserAccessPolicy.SystemRole,
                             CurrentUserAccessPolicy.AdminRole
                         },
-                        RequiredPermissionCode =
-                            CurrentUserAccessPolicy.UpdateManagePermissionCode
+                        RequiredPermissionCode = CurrentUserAccessPolicy.UpdateManagePermissionCode
                     }
                 }
             }
