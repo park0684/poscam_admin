@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Settlement;
 using poscam.AuthServer.Models.Entities;
@@ -18,16 +18,19 @@ namespace poscam.AuthServer.Controllers;
 /// - 파트너사별 월 정산 조회
 /// - 파트너사별 월 납부 처리 조회/저장
 ///
-/// 실제 권한 판단은 SettlementService에서 처리한다.
+/// 실제 권한 판단은 SettlementAccessService에서 처리한다.
 /// Controller는 로그인 사용자 확인과 요청/응답 연결만 담당한다.
 /// </summary>
 [ApiController]
 [Route("api/manage/settlements")]
 public class SettlementController : ControllerBase
 {
-    private readonly SettlementService _settlementService;
+    private readonly SettlementAccessService _settlementService;
     private readonly AccountService _accountService;
-    public SettlementController(SettlementService settlementService, AccountService accountService)
+
+    public SettlementController(
+        SettlementAccessService settlementService,
+        AccountService accountService)
     {
         _settlementService = settlementService;
         _accountService = accountService;
@@ -288,6 +291,7 @@ public class SettlementController : ControllerBase
 
         return Ok(result);
     }
+
     private async Task<ApiResponse<UserAccount>> GetLoginUserAsync()
     {
         var authorizationHeader = Request.Headers.Authorization.FirstOrDefault();
