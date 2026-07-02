@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Store;
 using poscam.AuthServer.Models.Entities;
@@ -9,12 +9,9 @@ namespace poscam.AuthServer.Controllers;
 
 /// <summary>
 /// 관리자/담당자용 매장 관리 API Controller.
-/// 
-/// 관리자:
-/// - 전체 매장 조회 가능
-/// 
-/// 담당자:
-/// - 본인에게 배정된 매장만 조회 가능
+///
+/// 매장 목록·상세 조회, 등록·수정,
+/// 담당자 연결·해제 및 사용 현황 조회를 제공한다.
 /// </summary>
 [ApiController]
 [Route("api/manage/stores")]
@@ -22,37 +19,34 @@ public class StoreManageController : ControllerBase
 {
     private readonly StoreManageService _storeManageService;
     private readonly AccountService _accountService;
+    private readonly AdminPermissionService _adminPermissionService;
+    private readonly PartnerUserPermissionService _partnerUserPermissionService;
 
     public StoreManageController(
         StoreManageService storeManageService,
-        AccountService accountService)
+        AccountService accountService,
+        AdminPermissionService adminPermissionService,
+        PartnerUserPermissionService partnerUserPermissionService)
     {
         _storeManageService = storeManageService;
         _accountService = accountService;
+        _adminPermissionService = adminPermissionService;
+        _partnerUserPermissionService = partnerUserPermissionService;
     }
 
     /// <summary>
     /// 매장 목록 조회 API.
-    /// 
-    /// Authorization 헤더의 관리자/담당자 토큰으로 로그인 사용자를 확인한다.
-    /// 
-    /// 조회 정책:
-    /// - System/Admin: 전체 매장 조회 가능
-    /// - PartnerUser: 본인 소속 파트너사의 매장만 조회 가능
-    /// 
-    /// 검색 조건:
-    /// - 매장 상태
-    /// - 담당 파트너
-    /// - 등록일 범위
-    /// - 계약일 범위
-    /// - 매장 ID / 매장명 검색어
+    ///
+    /// System은 전체 조회 가능하다.
+    /// Admin과 PartnerUser는 StoreManage 권한이 필요하며,
+    /// PartnerUser의 실제 조회 범위는 Service에서 소속 파트너사 기준으로 제한한다.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<List<StoreListItemDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<List<StoreListItemDto>>>> GetStores(
         [FromQuery] StoreListSearchRequest request)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -70,7 +64,7 @@ public class StoreManageController : ControllerBase
 
     /// <summary>
     /// 매장 상세 조회 API.
-    /// 
+    ///
     /// 매장 기본정보, 담당자 연결, 계약, 라이선스,
     /// PC캠/캠뷰어 장비, NVR 설정, 채널 설정을 한 번에 조회한다.
     /// </summary>
@@ -79,7 +73,7 @@ public class StoreManageController : ControllerBase
     public async Task<ActionResult<ApiResponse<StoreDetailResponse>>> GetStoreDetail(
         int storeCode)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -87,8 +81,6 @@ public class StoreManageController : ControllerBase
                 loginUserResult.ErrorCode,
                 loginUserResult.Message));
         }
-
-        var loginUser = loginUserResult.Data;
 
         var result = await _storeManageService.GetStoreDetailAsync(
             storeCode,
@@ -99,18 +91,17 @@ public class StoreManageController : ControllerBase
 
     /// <summary>
     /// 매장 등록/수정 API.
-    /// 
+    ///
     /// StoreCode가 없거나 0이면 신규 등록,
     /// StoreCode가 있으면 기존 매장 수정으로 처리한다.
-    /// 
     /// 신규 등록 시 매장 ID와 최초 비밀번호는 백엔드에서 자동 생성된다.
     /// </summary>
     [HttpPost("save")]
     [ProducesResponseType(typeof(ApiResponse<StoreSaveResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<StoreSaveResponse>>> SaveStore(
-    [FromBody] StoreSaveRequest request)
+        [FromBody] StoreSaveRequest request)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -118,8 +109,6 @@ public class StoreManageController : ControllerBase
                 loginUserResult.ErrorCode,
                 loginUserResult.Message));
         }
-
-        var loginUser = loginUserResult.Data;
 
         var result = await _storeManageService.SaveStoreAsync(
             request,
@@ -130,9 +119,7 @@ public class StoreManageController : ControllerBase
 
     /// <summary>
     /// 매장 담당자 연결 API.
-    /// 
     /// 특정 매장에 담당자와 역할을 연결한다.
-    /// 연결된 담당자는 해당 매장을 조회할 수 있다.
     /// </summary>
     [HttpPost("{storeCode:int}/assignments")]
     [ProducesResponseType(typeof(ApiResponse<StoreAssignmentResponse>), StatusCodes.Status200OK)]
@@ -140,7 +127,7 @@ public class StoreManageController : ControllerBase
         int storeCode,
         [FromBody] StoreAssignmentCreateRequest request)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -163,15 +150,14 @@ public class StoreManageController : ControllerBase
 
     /// <summary>
     /// 매장 담당자 연결 해제 API.
-    /// 
-    /// 물리 삭제하지 않고 store_user_assignments.status를 Released로 변경한다.
+    /// 물리 삭제하지 않고 연결 상태를 Released로 변경한다.
     /// </summary>
     [HttpDelete("assignments/{assignmentCode:int}")]
     [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<bool>>> ReleaseAssignment(
-    int assignmentCode)
+        int assignmentCode)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -188,21 +174,14 @@ public class StoreManageController : ControllerBase
     }
 
     /// <summary>
-    /// Authorization 헤더의 Bearer 토큰으로 로그인 사용자를 확인한다.
+    /// 매장 사용 현황 조회 API.
     /// </summary>
-    private async Task<ApiResponse<UserAccount>> GetLoginUserAsync()
-    {
-        var authorizationHeader = Request.Headers.Authorization.FirstOrDefault();
-
-        return await _accountService.GetLoginUserByTokenAsync(authorizationHeader);
-    }
-
     [HttpGet("{storeCode:int}/usage-summary")]
     [ProducesResponseType(typeof(ApiResponse<StoreUsageSummaryDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<StoreUsageSummaryDto>>> GetUsageSummary(
-    int storeCode)
+        int storeCode)
     {
-        var loginUserResult = await GetLoginUserAsync();
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -216,5 +195,62 @@ public class StoreManageController : ControllerBase
             loginUserResult.Data);
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// 로그인 확인 후 역할에 맞는 StoreManage 권한을 검사한다.
+    /// </summary>
+    private async Task<ApiResponse<UserAccount>> GetAuthorizedLoginUserAsync()
+    {
+        var loginUserResult = await GetLoginUserAsync();
+
+        if (!loginUserResult.Success || loginUserResult.Data == null)
+        {
+            return loginUserResult;
+        }
+
+        var loginUser = loginUserResult.Data;
+        var loginUserRole = (UserRole)loginUser.UserRole;
+
+        ApiResponse<bool> permissionResult;
+
+        if (loginUserRole == UserRole.System ||
+            loginUserRole == UserRole.Admin)
+        {
+            permissionResult = await _adminPermissionService.CheckPermissionAsync(
+                loginUser,
+                AdminPermissionType.StoreManage);
+        }
+        else if (loginUserRole == UserRole.PartnerUser)
+        {
+            permissionResult = await _partnerUserPermissionService.CheckPermissionAsync(
+                loginUser,
+                PartnerUserPermissionType.StoreManage);
+        }
+        else
+        {
+            return ApiResponse<UserAccount>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "매장 관리 기능을 사용할 권한이 없습니다.");
+        }
+
+        if (!permissionResult.Success)
+        {
+            return ApiResponse<UserAccount>.Fail(
+                permissionResult.ErrorCode,
+                permissionResult.Message);
+        }
+
+        return ApiResponse<UserAccount>.Ok(loginUser);
+    }
+
+    /// <summary>
+    /// Authorization 헤더의 Bearer 토큰으로 로그인 사용자를 확인한다.
+    /// </summary>
+    private async Task<ApiResponse<UserAccount>> GetLoginUserAsync()
+    {
+        var authorizationHeader = Request.Headers.Authorization.FirstOrDefault();
+
+        return await _accountService.GetLoginUserByTokenAsync(authorizationHeader);
     }
 }
