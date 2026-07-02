@@ -1,4 +1,4 @@
-﻿@rendermode InteractiveServer
+@rendermode InteractiveServer
 
 @using poscam.AdminWeb.Models.Common
 @using poscam.AdminWeb.Models.Contract
@@ -6,32 +6,36 @@
 @using Microsoft.AspNetCore.Components.Forms
 
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
+@inject poscam.AdminWeb.Services.CurrentUserAccessService CurrentUserAccessService
 @inject NavigationManager NavigationManager
 
 <div class="card shadow-sm mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
         <strong>계약정보</strong>
 
-        <div class="d-flex gap-2">
-            @if (_isEditMode)
-            {
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
-                    수정 취소
-                </button>
-            }
-            else if (AllowMultipleContracts && !_showCreateForm)
-            {
-                <button class="btn btn-sm btn-outline-primary" @onclick="ShowCreateForm">
-                    계약 등록
-                </button>
-            }
-            else if (_showCreateForm && _contracts.Count > 0)
-            {
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
-                    등록 취소
-                </button>
-            }
-        </div>
+        @if (_canManageContracts)
+        {
+            <div class="d-flex gap-2">
+                @if (_isEditMode)
+                {
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                        수정 취소
+                    </button>
+                }
+                else if (AllowMultipleContracts && !_showCreateForm)
+                {
+                    <button class="btn btn-sm btn-outline-primary" @onclick="ShowCreateForm">
+                        계약 등록
+                    </button>
+                }
+                else if (_showCreateForm && _contracts.Count > 0)
+                {
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+                        등록 취소
+                    </button>
+                }
+            </div>
+        }
     </div>
 
     <div class="card-body">
@@ -48,120 +52,129 @@
                 계약 목록을 불러오는 중입니다.
             </div>
         }
-        else if (_contracts.Count == 0)
+        else if (!_canManageContracts)
         {
-            <div class="alert alert-secondary">
-                등록된 계약이 없습니다. 아래에서 신규 계약을 등록하세요.
+            <div class="alert alert-secondary mb-0">
+                계약 정보를 조회하거나 관리할 권한이 없습니다.
             </div>
         }
         else
         {
-            <table class="table table-sm table-striped align-middle mb-3">
-                <thead>
-                    <tr>
-                        <th>계약번호</th>
-                        <th>유형</th>
-                        <th>PC캠</th>
-                        <th>캠뷰어</th>
-                        <th>시작일</th>
-                        <th>종료일</th>
-                        <th>상태</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var contract in _contracts)
-                    {
+            @if (_contracts.Count == 0)
+            {
+                <div class="alert alert-secondary">
+                    등록된 계약이 없습니다. 아래에서 신규 계약을 등록하세요.
+                </div>
+            }
+            else
+            {
+                <table class="table table-sm table-striped align-middle mb-3">
+                    <thead>
                         <tr>
-                            <td>@contract.ContractNo</td>
-                            <td>@GetContractTypeName(contract.ContractType)</td>
-                            <td>@contract.PccamCount</td>
-                            <td>@contract.ViewerCount</td>
-                            <td>@contract.StartDate.ToString("yyyy-MM-dd")</td>
-                            <td>@(contract.EndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
-                            <td>@GetStatusName(contract.Status)</td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-primary"
-                                        @onclick="() => EditContract(contract)">
-                                    수정
-                                </button>
-                            </td>
+                            <th>계약번호</th>
+                            <th>유형</th>
+                            <th>PC캠</th>
+                            <th>캠뷰어</th>
+                            <th>시작일</th>
+                            <th>종료일</th>
+                            <th>상태</th>
+                            <th></th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        }
+                    </thead>
+                    <tbody>
+                        @foreach (var contract in _contracts)
+                        {
+                            <tr>
+                                <td>@contract.ContractNo</td>
+                                <td>@GetContractTypeName(contract.ContractType)</td>
+                                <td>@contract.PccamCount</td>
+                                <td>@contract.ViewerCount</td>
+                                <td>@contract.StartDate.ToString("yyyy-MM-dd")</td>
+                                <td>@(contract.EndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                <td>@GetStatusName(contract.Status)</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            @onclick="() => EditContract(contract)">
+                                        수정
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
 
-        @if (ShouldShowForm)
-        {
-            <div class="border rounded p-3 mb-3 bg-light">
-                <h6 class="mb-3">@(_isEditMode ? "계약 수정" : "신규 계약 등록")</h6>
+            @if (ShouldShowForm)
+            {
+                <div class="border rounded p-3 mb-3 bg-light">
+                    <h6 class="mb-3">@(_isEditMode ? "계약 수정" : "신규 계약 등록")</h6>
 
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label">계약 유형</label>
-                        <select class="form-select" @bind="_request.ContractType">
-                            <option value="1">테스트형</option>
-                            <option value="2">구매형</option>
-                            <option value="3">구독형</option>
-                        </select>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">계약 유형</label>
+                            <select class="form-select" @bind="_request.ContractType">
+                                <option value="1">테스트형</option>
+                                <option value="2">구매형</option>
+                                <option value="3">구독형</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">PC캠 수량</label>
+                            <input class="form-control"
+                                   type="number"
+                                   min="0"
+                                   @bind="_request.PccamCount" />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">캠뷰어 수량</label>
+                            <input class="form-control"
+                                   type="number"
+                                   min="0"
+                                   @bind="_request.ViewerCount" />
+                        </div>
                     </div>
 
-                    <div class="col-md-4">
-                        <label class="form-label">PC캠 수량</label>
-                        <input class="form-control"
-                               type="number"
-                               min="0"
-                               @bind="_request.PccamCount" />
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">시작일</label>
+                            <InputDate class="form-control"
+                                       @bind-Value="_request.StartDate" />
+                            <small class="text-muted">
+                                테스트형 신규 등록은 서버 기준 오늘로 처리됩니다.
+                            </small>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">종료일</label>
+                            <InputDate class="form-control"
+                                       @bind-Value="_request.EndDate" />
+                            <small class="text-muted">
+                                구독형은 종료일이 필요합니다.
+                            </small>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">상태</label>
+                            <select class="form-select" @bind="_request.Status">
+                                <option value="1">정상</option>
+                                <option value="0">비활성</option>
+                                <option value="2">일시중지</option>
+                                <option value="9">종료/차단</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="col-md-4">
-                        <label class="form-label">캠뷰어 수량</label>
-                        <input class="form-control"
-                               type="number"
-                               min="0"
-                               @bind="_request.ViewerCount" />
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary"
+                                @onclick="SaveContractAsync"
+                                disabled="@_isSaving">
+                            @(_isSaving ? "저장 중..." : (_isEditMode ? "계약 수정" : "계약 등록"))
+                        </button>
                     </div>
                 </div>
-
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label">시작일</label>
-                        <InputDate class="form-control"
-                                   @bind-Value="_request.StartDate" />
-                        <small class="text-muted">
-                            테스트형 신규 등록은 서버 기준 오늘로 처리됩니다.
-                        </small>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label class="form-label">종료일</label>
-                        <InputDate class="form-control"
-                                   @bind-Value="_request.EndDate" />
-                        <small class="text-muted">
-                            구독형은 종료일이 필요합니다.
-                        </small>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label class="form-label">상태</label>
-                        <select class="form-select" @bind="_request.Status">
-                            <option value="1">정상</option>
-                            <option value="0">비활성</option>
-                            <option value="2">일시중지</option>
-                            <option value="9">종료/차단</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="d-flex justify-content-end">
-                    <button class="btn btn-primary"
-                            @onclick="SaveContractAsync"
-                            disabled="@_isSaving">
-                        @(_isSaving ? "저장 중..." : (_isEditMode ? "계약 수정" : "계약 등록"))
-                    </button>
-                </div>
-            </div>
+            }
         }
     </div>
 </div>
@@ -169,45 +182,41 @@
 @code {
     [Parameter]
     public int StoreCode { get; set; }
+
     [Parameter]
     public bool AllowMultipleContracts { get; set; } = true;
 
     [Parameter]
     public bool ShowContractList { get; set; } = true;
 
+    private const int SystemRole = 0;
+    private const int AdminRole = 1;
+    private const int PartnerUserRole = 2;
+    private const int ContractManagePermissionCode = 10;
+
     private bool _showCreateForm;
-
     private bool _isLoading = true;
-
     private bool _isSaving;
-
     private bool _isSuccessMessage;
+    private bool _canManageContracts;
 
-    private bool _isEditMode => _request.ContractCode != null && _request.ContractCode > 0;
+    private bool _isEditMode =>
+        _request.ContractCode != null &&
+        _request.ContractCode > 0;
 
     private string? _message;
 
-    private string MessageCss => _isSuccessMessage ? "alert-success" : "alert-warning";
+    private string MessageCss =>
+        _isSuccessMessage ? "alert-success" : "alert-warning";
 
     private ContractSaveRequest _request = new();
 
     private List<StoreContractDto> _contracts = new();
 
-    private bool ShouldShowForm => _contracts.Count == 0 || _isEditMode || _showCreateForm;
+    private bool ShouldShowForm =>
+        _canManageContracts &&
+        (_contracts.Count == 0 || _isEditMode || _showCreateForm);
 
-    private void CancelEdit()
-    {
-        _message = null;
-        _showCreateForm = false;
-        ResetForm();
-    }
-    
-    private void ShowCreateForm()
-    {
-        _message = null;
-        ResetForm();
-        _showCreateForm = true;
-    }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -216,16 +225,68 @@
         }
 
         ResetForm();
+        await LoadContractPermissionAsync();
 
-        await LoadContractsAsync();
+        if (_canManageContracts)
+        {
+            await LoadContractsAsync();
+        }
 
         _isLoading = false;
 
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task LoadContractPermissionAsync()
+    {
+        var accessResult = await CurrentUserAccessService.GetCurrentAccessAsync();
+
+        if (!accessResult.Success || accessResult.Data == null)
+        {
+            _canManageContracts = false;
+            return;
+        }
+
+        var access = accessResult.Data;
+
+        if (access.UserRole == SystemRole)
+        {
+            _canManageContracts = true;
+            return;
+        }
+
+        _canManageContracts =
+            access.UserRole is AdminRole or PartnerUserRole &&
+            access.PermissionCodes.Contains(ContractManagePermissionCode);
+    }
+
+    private void CancelEdit()
+    {
+        _message = null;
+        _showCreateForm = false;
+        ResetForm();
+    }
+
+    private void ShowCreateForm()
+    {
+        if (!_canManageContracts)
+        {
+            SetWarning("계약을 등록할 권한이 없습니다.");
+            return;
+        }
+
+        _message = null;
+        ResetForm();
+        _showCreateForm = true;
+    }
+
     private async Task LoadContractsAsync()
     {
+        if (!_canManageContracts)
+        {
+            return;
+        }
+
         try
         {
             var result = await ApiClient.GetAsync<ApiResponse<List<StoreContractDto>>>(
@@ -261,6 +322,12 @@
     {
         _message = null;
 
+        if (!_canManageContracts)
+        {
+            SetWarning("계약을 저장할 권한이 없습니다.");
+            return;
+        }
+
         if (StoreCode <= 0)
         {
             SetWarning("매장 저장 후 계약을 등록할 수 있습니다.");
@@ -285,8 +352,6 @@
             return;
         }
 
-
-
         _request.StoreCode = StoreCode;
         _showCreateForm = false;
         _isSaving = true;
@@ -297,13 +362,17 @@
 
             if (_isEditMode)
             {
-                result = await ApiClient.PutAsync<ContractSaveRequest, ApiResponse<ContractSaveResponse>>(
+                result = await ApiClient.PutAsync<
+                    ContractSaveRequest,
+                    ApiResponse<ContractSaveResponse>>(
                     $"/api/manage/contracts/{_request.ContractCode}",
                     _request);
             }
             else
             {
-                result = await ApiClient.PostAsync<ContractSaveRequest, ApiResponse<ContractSaveResponse>>(
+                result = await ApiClient.PostAsync<
+                    ContractSaveRequest,
+                    ApiResponse<ContractSaveResponse>>(
                     $"/api/manage/stores/{StoreCode}/contracts",
                     _request);
             }
@@ -326,8 +395,6 @@
 
             await LoadContractsAsync();
             ResetForm();
-
-            
         }
         catch (Exception ex)
         {
@@ -341,6 +408,12 @@
 
     private void EditContract(StoreContractDto contract)
     {
+        if (!_canManageContracts)
+        {
+            SetWarning("계약을 수정할 권한이 없습니다.");
+            return;
+        }
+
         _message = null;
 
         _request = new ContractSaveRequest
