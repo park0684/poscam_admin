@@ -34,6 +34,8 @@ builder.Services.AddScoped<ContractBillingRepository>();
 builder.Services.AddScoped<BillingPaymentRepository>();
 builder.Services.AddScoped<AdminUserPermissionRepository>();
 builder.Services.AddScoped<PartnerUserPermissionRepository>();
+builder.Services.AddScoped<IPartnerUserPermissionReader>(provider =>
+    provider.GetRequiredService<PartnerUserPermissionRepository>());
 
 builder.Services.AddScoped<LicenseKeyService>();
 builder.Services.AddScoped<PasswordService>();
@@ -52,6 +54,7 @@ builder.Services.AddScoped<SettlementAccessService>();
 builder.Services.AddScoped<AdminPermissionService>();
 builder.Services.AddScoped<AdminAccountManageService>();
 builder.Services.AddScoped<PartnerUserPermissionManageService>();
+builder.Services.AddScoped<PartnerUserPermissionService>();
 
 builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<AdminService>();
