@@ -93,8 +93,9 @@ public sealed class MenuAccessFilter
             return true;
         }
 
-        return access.UserRole == CurrentUserAccessPolicy.AdminRole
-               && access.PermissionCodes.Contains(
-                   menu.RequiredPermissionCode!.Value);
+        // Roles에서 허용된 Admin 또는 PartnerUser는
+        // 자신의 세부 권한 목록에 필요한 코드가 있어야 한다.
+        return access.PermissionCodes.Contains(
+            menu.RequiredPermissionCode!.Value);
     }
 }
