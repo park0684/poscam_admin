@@ -104,7 +104,9 @@ public class MenuAccessFilterTests
 
         var result = _filter.Filter(
             source,
-            CreateAccess(CurrentUserAccessPolicy.AdminRole));
+            CreateAccess(
+                CurrentUserAccessPolicy.AdminRole,
+                CurrentUserAccessPolicy.StoreManagePermissionCode));
 
         var resultKeys = result
             .OrderBy(menu => menu.Order)
