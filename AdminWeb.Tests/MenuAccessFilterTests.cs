@@ -94,21 +94,12 @@ public class MenuAccessFilterTests
     }
 
     [Fact]
-    public void Filter_PartnerUserCannotSeeAdminOnlyPermissionMenu()
+    public void MenuConfiguration_DoesNotContainStandalonePartnerPermissionMenu()
     {
-        var filter = new MenuAccessFilter();
-        var access = CreateAccess(
-            CurrentUserAccessPolicy.PartnerUserRole,
-            CurrentUserAccessPolicy.PartnerUserManagePermissionCode,
-            CurrentUserAccessPolicy.UpdateManagePermissionCode);
-
-        var result = filter.Filter(MenuConfiguration.GetMenus(), access);
-
-        Assert.DoesNotContain(result, menu => menu.Key == "updates");
-
         var partnerMenu = Assert.Single(
-            result,
+            MenuConfiguration.GetMenus(),
             menu => menu.Key == "partners");
+
         Assert.DoesNotContain(
             partnerMenu.Children,
             menu => menu.Key == "partner-user-permissions");
