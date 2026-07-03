@@ -72,19 +72,6 @@ public static class MenuConfiguration
                             CurrentUserAccessPolicy.PartnerUserRole
                         },
                         RequiredPermissionCode = CurrentUserAccessPolicy.PartnerUserManagePermissionCode
-                    },
-                    new MenuItem
-                    {
-                        Key = "partner-user-permissions",
-                        Title = "담당자 권한",
-                        Url = "users/permissions",
-                        Order = 3,
-                        Roles = new List<int>
-                        {
-                            CurrentUserAccessPolicy.SystemRole,
-                            CurrentUserAccessPolicy.AdminRole
-                        },
-                        RequiredPermissionCode = CurrentUserAccessPolicy.PartnerUserManagePermissionCode
                     }
                 }
             },
