@@ -110,6 +110,7 @@
     [Parameter]
     public string? UserName { get; set; }
 
+    private int _loadedUserCode;
     private bool _isLoading = true;
     private bool _isSaving;
     private bool _isSuccessMessage;
@@ -131,6 +132,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        if (_loadedUserCode == UserCode)
+        {
+            return;
+        }
+
+        _loadedUserCode = UserCode;
         await LoadPermissionsAsync();
     }
 
