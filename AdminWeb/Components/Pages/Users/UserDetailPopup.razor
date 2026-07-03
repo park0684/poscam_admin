@@ -9,6 +9,7 @@
 
 @inject poscam.AdminWeb.Services.ApiClient ApiClient
 @inject poscam.AdminWeb.Services.AuthStateService AuthStateService
+@inject poscam.AdminWeb.Services.CurrentUserAccessService CurrentUserAccessService
 @inject Microsoft.JSInterop.IJSRuntime JS
 
 <PageTitle>담당자 상세</PageTitle>
@@ -37,6 +38,17 @@
                     담당자 정보
                 </button>
             </li>
+
+            @if (_canManagePermissions)
+            {
+                <li class="nav-item">
+                    <button type="button"
+                            class="@(GetTabClass("permissions"))"
+                            @onclick="@(() => ChangeTabAsync("permissions"))">
+                        권한
+                    </button>
+                </li>
+            }
 
             <li class="nav-item">
                 <button type="button"
@@ -398,6 +410,14 @@
             </div>
         }
 
+        @if (_activeTab == "permissions" && _canManagePermissions)
+        {
+            <div class="tab-area">
+                <PartnerUserPermissionPanel UserCode="@UserCode"
+                                            UserName="@_detail.UserName" />
+            </div>
+        }
+
         @if (_activeTab == "logs")
         {
             <div class="tab-area">
@@ -538,6 +558,7 @@
     private bool _isLogLoading;
     private bool _isSaving;
     private bool _isAdmin;
+    private bool _canManagePermissions;
     private bool _editMode;
     private bool _isSuccessMessage;
 
@@ -660,6 +681,14 @@
         // System = 0, Admin = 1
         _isAdmin = role == 0 || role == 1;
 
+        var accessResult =
+            await CurrentUserAccessService.GetCurrentAccessAsync();
+
+        _canManagePermissions =
+            accessResult.Success &&
+            poscam.AdminWeb.Services.CurrentUserAccessPolicy
+                .CanManagePartnerUserPermissions(accessResult.Data);
+
         // 비밀번호 변경 버튼은 본인 계정에서만 보여야 하므로,
         // 현재 로그인한 사용자의 UserCode를 함께 조회합니다.
         _loginUserCode = await AuthStateService.GetUserCodeAsync();
@@ -681,6 +710,11 @@
     /// </summary>
     private async Task ChangeTabAsync(string tab)
     {
+        if (tab == "permissions" && !_canManagePermissions)
+        {
+            return;
+        }
+
         _activeTab = tab;
 
         if (tab == "logs" && _logs.Count == 0)
