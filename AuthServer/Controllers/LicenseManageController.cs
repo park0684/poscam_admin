@@ -5,6 +5,7 @@ using poscam.AuthServer.Models.Dtos.License;
 using poscam.AuthServer.Models.Dtos.Store;
 using poscam.AuthServer.Models.Entities;
 using poscam.AuthServer.Models.Enums;
+using poscam.AuthServer.Repositories;
 using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
@@ -21,17 +22,23 @@ public class LicenseManageController : ControllerBase
     private readonly AccountService _accountService;
     private readonly AdminPermissionService _adminPermissionService;
     private readonly PartnerUserPermissionService _partnerUserPermissionService;
+    private readonly ContractRepository _contractRepository;
+    private readonly StoreRepository _storeRepository;
 
     public LicenseManageController(
         LicenseManageService licenseManageService,
         AccountService accountService,
         AdminPermissionService adminPermissionService,
-        PartnerUserPermissionService partnerUserPermissionService)
+        PartnerUserPermissionService partnerUserPermissionService,
+        ContractRepository contractRepository,
+        StoreRepository storeRepository)
     {
         _licenseManageService = licenseManageService;
         _accountService = accountService;
         _adminPermissionService = adminPermissionService;
         _partnerUserPermissionService = partnerUserPermissionService;
+        _contractRepository = contractRepository;
+        _storeRepository = storeRepository;
     }
 
     /// <summary>
@@ -60,6 +67,71 @@ public class LicenseManageController : ControllerBase
             loginUserResult.Data);
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// 라이선스 발급 화면에서 사용할 매장 기준 계약 목록 조회 API.
+    ///
+    /// ContractManage 권한이 아니라 LicenseManage 권한으로 접근한다.
+    /// 실제 계약 등록/수정 권한은 기존 계약 관리 API에서 별도로 검증한다.
+    /// </summary>
+    [HttpGet("api/manage/stores/{storeCode:int}/license-contracts")]
+    [ProducesResponseType(typeof(ApiResponse<List<StoreContractDto>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<List<StoreContractDto>>>> GetIssueContractsByStore(
+        int storeCode)
+    {
+        var loginUserResult = await GetAuthorizedLoginUserAsync();
+
+        if (!loginUserResult.Success || loginUserResult.Data == null)
+        {
+            return Ok(ApiResponse<List<StoreContractDto>>.Fail(
+                loginUserResult.ErrorCode,
+                loginUserResult.Message));
+        }
+
+        if (storeCode <= 0)
+        {
+            return Ok(ApiResponse<List<StoreContractDto>>.Fail(
+                AuthErrorCode.InvalidStore,
+                "매장 코드가 올바르지 않습니다."));
+        }
+
+        var loginUser = loginUserResult.Data;
+        var loginUserRole = (UserRole)loginUser.UserRole;
+
+        if (loginUserRole == UserRole.PartnerUser)
+        {
+            if (!loginUser.PartnerCode.HasValue || loginUser.PartnerCode.Value <= 0)
+            {
+                return Ok(ApiResponse<List<StoreContractDto>>.Fail(
+                    AuthErrorCode.PermissionDenied,
+                    "담당자 계정에 소속 파트너 정보가 없습니다."));
+            }
+
+            var canAccessStore = await _storeRepository.CanPartnerAccessStoreAsync(
+                loginUser.PartnerCode.Value,
+                storeCode);
+
+            if (!canAccessStore)
+            {
+                return Ok(ApiResponse<List<StoreContractDto>>.Fail(
+                    AuthErrorCode.PermissionDenied,
+                    "해당 매장의 라이선스 발급용 계약 목록을 조회할 권한이 없습니다."));
+            }
+        }
+        else if (loginUserRole != UserRole.System &&
+                 loginUserRole != UserRole.Admin)
+        {
+            return Ok(ApiResponse<List<StoreContractDto>>.Fail(
+                AuthErrorCode.PermissionDenied,
+                "라이선스 발급용 계약 목록을 조회할 권한이 없습니다."));
+        }
+
+        var contracts = await _contractRepository.GetByStoreAsync(storeCode);
+
+        return Ok(ApiResponse<List<StoreContractDto>>.Ok(
+            contracts,
+            "라이선스 발급용 계약 목록을 조회했습니다."));
     }
 
     /// <summary>
