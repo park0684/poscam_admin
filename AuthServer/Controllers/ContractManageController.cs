@@ -39,13 +39,17 @@ public class ContractManageController : ControllerBase
     /// System은 전체 조회 가능하다.
     /// Admin과 PartnerUser는 ContractManage 권한이 필요하며,
     /// PartnerUser의 실제 매장 접근 범위는 Service에서 추가 확인한다.
+    ///
+    /// 단, 라이선스 발급 화면에서 계약 선택 목록을 불러오기 위해
+    /// PartnerUser는 LicenseManage 권한만 있어도 조회를 허용한다.
+    /// 계약 등록/수정 API는 기존처럼 ContractManage 권한을 요구한다.
     /// </summary>
     [HttpGet("api/manage/stores/{storeCode:int}/contracts")]
     [ProducesResponseType(typeof(ApiResponse<List<StoreContractDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<List<StoreContractDto>>>> GetContractsByStore(
         int storeCode)
     {
-        var loginUserResult = await GetAuthorizedLoginUserAsync();
+        var loginUserResult = await GetAuthorizedContractListUserAsync();
 
         if (!loginUserResult.Success || loginUserResult.Data == null)
         {
@@ -144,6 +148,76 @@ public class ContractManageController : ControllerBase
             loginUserResult.Data);
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// 계약 목록 조회용 로그인 확인.
+    ///
+    /// 기존 계약 관리 권한 외에, PartnerUser의 LicenseManage 권한도 허용한다.
+    /// 라이선스 발급 화면에서 계약 선택 목록을 조회하기 위한 예외이다.
+    /// </summary>
+    private async Task<ApiResponse<UserAccount>> GetAuthorizedContractListUserAsync()
+    {
+        var loginUserResult = await GetLoginUserAsync();
+
+        if (!loginUserResult.Success || loginUserResult.Data == null)
+        {
+            return loginUserResult;
+        }
+
+        var loginUser = loginUserResult.Data;
+        var loginUserRole = (UserRole)loginUser.UserRole;
+
+        if (loginUserRole == UserRole.System)
+        {
+            return ApiResponse<UserAccount>.Ok(loginUser);
+        }
+
+        if (loginUserRole == UserRole.Admin)
+        {
+            var permissionResult = await _adminPermissionService.CheckAnyPermissionAsync(
+                loginUser,
+                AdminPermissionType.ContractManage,
+                AdminPermissionType.LicenseManage);
+
+            if (!permissionResult.Success)
+            {
+                return ApiResponse<UserAccount>.Fail(
+                    permissionResult.ErrorCode,
+                    permissionResult.Message);
+            }
+
+            return ApiResponse<UserAccount>.Ok(loginUser);
+        }
+
+        if (loginUserRole == UserRole.PartnerUser)
+        {
+            var contractPermissionResult = await _partnerUserPermissionService.CheckPermissionAsync(
+                loginUser,
+                PartnerUserPermissionType.ContractManage);
+
+            if (contractPermissionResult.Success)
+            {
+                return ApiResponse<UserAccount>.Ok(loginUser);
+            }
+
+            var licensePermissionResult = await _partnerUserPermissionService.CheckPermissionAsync(
+                loginUser,
+                PartnerUserPermissionType.LicenseManage);
+
+            if (!licensePermissionResult.Success)
+            {
+                return ApiResponse<UserAccount>.Fail(
+                    licensePermissionResult.ErrorCode,
+                    licensePermissionResult.Message);
+            }
+
+            return ApiResponse<UserAccount>.Ok(loginUser);
+        }
+
+        return ApiResponse<UserAccount>.Fail(
+            AuthErrorCode.PermissionDenied,
+            "계약 목록을 조회할 권한이 없습니다.");
     }
 
     /// <summary>
