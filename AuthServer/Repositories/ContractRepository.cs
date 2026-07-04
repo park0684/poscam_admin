@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using Dapper;
 using poscam.AuthServer.Models.Entities;
 using poscam.AuthServer.Models.Dtos.Store;
@@ -30,13 +30,15 @@ public class ContractRepository : RepositoryBase
         SELECT
             con_code AS ConCode,
             con_store AS ConStore,
+            con_partner AS ConPartner,
+            con_no AS ConNo,
             con_type AS ConType,
             con_pcc AS ConPcc,
             con_view AS ConView,
             con_start AS ConStart,
             con_end AS ConEnd,
             con_status AS Status,
-            con_rdate AS ConIDate,
+            con_rdate AS ConRDate,
             con_udate AS ConUDate
         FROM contracts
         WHERE con_code = @ContractCode
@@ -94,13 +96,15 @@ public class ContractRepository : RepositoryBase
         SELECT
             con_code AS ConCode,
             con_store AS ConStore,
+            con_partner AS ConPartner,
+            con_no AS ConNo,
             con_type AS ConType,
             con_pcc AS ConPcc,
             con_view AS ConView,
             con_start AS ConStart,
             con_end AS ConEnd,
             con_status AS Status,
-            con_rdate AS ConIDate,
+            con_rdate AS ConRDate,
             con_udate AS ConUDate
         FROM contracts
         WHERE con_store = @StoreCode
@@ -196,7 +200,7 @@ SELECT
     con_udate AS UpdatedAt
 FROM contracts
 WHERE con_code = @ContractCode;
-";
+ ";
 
         return await WithConnectionAsync(conn =>
             conn.QueryFirstOrDefaultAsync<StoreContractDto>(
@@ -307,7 +311,7 @@ ORDER BY
     p.partner_name ASC,
     s.store_name ASC,
     c.con_code ASC;
-";
+ ";
 
         var result = await WithConnectionAsync(conn =>
             conn.QueryAsync<BillingTargetContractDto>(
