@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using Dapper;
 using poscam.AuthServer.Models.Enums;
 
@@ -65,6 +65,30 @@ ORDER BY pup_permission;
 
             try
             {
+                const string selectBeforeSql = @"
+SELECT pup_permission
+FROM partner_user_permissions
+WHERE pup_user = @UserCode
+ORDER BY pup_permission;
+";
+
+                var beforePermissions = (await conn.QueryAsync<int>(
+                        selectBeforeSql,
+                        new { UserCode = userCode },
+                        transaction))
+                    .ToList();
+
+                var afterPermissions = permissionCodes
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToList();
+
+                if (beforePermissions.SequenceEqual(afterPermissions))
+                {
+                    transaction.Commit();
+                    return 0;
+                }
+
                 const string deleteSql = @"
 DELETE FROM partner_user_permissions
 WHERE pup_user = @UserCode;
@@ -92,7 +116,7 @@ VALUES
 );
 ";
 
-                foreach (var permissionCode in permissionCodes.Distinct())
+                foreach (var permissionCode in afterPermissions)
                 {
                     affected += await conn.ExecuteAsync(
                         insertSql,
@@ -104,6 +128,36 @@ VALUES
                         },
                         transaction);
                 }
+
+                const string logSql = @"
+INSERT INTO partner_user_permission_logs
+(
+    pupl_user,
+    pupl_changed_by,
+    pupl_before_permissions,
+    pupl_after_permissions,
+    pupl_changed_at
+)
+VALUES
+(
+    @UserCode,
+    @ChangedBy,
+    @BeforePermissions,
+    @AfterPermissions,
+    NOW()
+);
+";
+
+                await conn.ExecuteAsync(
+                    logSql,
+                    new
+                    {
+                        UserCode = userCode,
+                        ChangedBy = changedBy,
+                        BeforePermissions = string.Join(",", beforePermissions),
+                        AfterPermissions = string.Join(",", afterPermissions)
+                    },
+                    transaction);
 
                 transaction.Commit();
                 return affected;
