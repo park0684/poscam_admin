@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using poscam.AuthServer.Models.Dtos.Settlement;
 using poscam.AuthServer.Models.Entities;
 
@@ -57,8 +57,8 @@ SELECT
     ppp.ppp_udate AS PppUdate
 FROM partner_price_policy ppp
 LEFT JOIN partners p
-    ON ppp.partner_code = p.partner_code
-WHERE (@PartnerCode IS NULL OR ppp.partner_code = @PartnerCode)
+    ON ppp.ppp_partner = p.partner_code
+WHERE (@PartnerCode IS NULL OR ppp.ppp_partner = @PartnerCode)
 ORDER BY
     p.partner_name ASC,
     ppp.ppp_start_month DESC,
@@ -175,7 +175,7 @@ LIMIT 1;
         const string sql = @"
 SELECT COUNT(1)
 FROM partner_price_policy
-WHERE partner_code = @PartnerCode
+WHERE ppp_partner = @PartnerCode
   AND ppp_status = 1
   AND ppp_start_month <= @BillMonth
   AND (ppp_end_month IS NULL OR ppp_end_month >= @BillMonth);
