@@ -1,4 +1,4 @@
-﻿namespace poscam.AuthServer.Models.Entities;
+namespace poscam.AuthServer.Models.Entities;
 
 /// <summary>
 /// 파트너사별 단가 정책 Entity.
@@ -21,7 +21,7 @@ public class PartnerPricePolicy
 
     /// <summary>
     /// 파트너사 코드.
-    /// DB 컬럼: partner_code
+    /// DB 컬럼: ppp_partner
     /// </summary>
     public int PartnerCode { get; set; }
 
@@ -76,4 +76,3 @@ public class PartnerPricePolicy
     /// </summary>
     public DateTime? PppUdate { get; set; }
 }
-
