@@ -1,4 +1,4 @@
-﻿@rendermode InteractiveServer
+@rendermode InteractiveServer
 
 @using poscam.AdminWeb.Models.Common
 @using poscam.AdminWeb.Models.Store
@@ -54,6 +54,12 @@
                 else
                 {
                     <dl class="row mb-3">
+                        <dt class="col-4">제조사</dt>
+                        <dd class="col-8">
+                            @GetProviderName(_config.NvrConfig.NvrProvider)
+                            <span class="text-muted">(@_config.NvrConfig.NvrProvider)</span>
+                        </dd>
+
                         <dt class="col-4">NVR ID</dt>
                         <dd class="col-8">@_config.NvrConfig.NvrId</dd>
 
@@ -65,8 +71,11 @@
                         <dt class="col-4">NVR IP</dt>
                         <dd class="col-8">@_config.NvrConfig.NvrIp</dd>
 
-                        <dt class="col-4">NVR Port</dt>
+                        <dt class="col-4">제어/API Port</dt>
                         <dd class="col-8">@_config.NvrConfig.NvrPort</dd>
+
+                        <dt class="col-4">RTSP Port</dt>
+                        <dd class="col-8">@_config.NvrConfig.NvrRtspPort</dd>
 
                         <dt class="col-4">채널 수</dt>
                         <dd class="col-8">@_config.NvrConfig.NvrChannels</dd>
@@ -176,6 +185,17 @@
         {
             SetWarning($"NVR 설정 조회 중 오류가 발생했습니다. {ex.Message}");
         }
+    }
+
+    private static string GetProviderName(int provider)
+    {
+        return provider switch
+        {
+            1 => "Dahua",
+            2 => "TP-Link VIGI",
+            3 => "KT Telecop",
+            _ => "미지정"
+        };
     }
 
     private void SetSuccess(string message)
