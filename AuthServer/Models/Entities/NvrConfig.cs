@@ -1,10 +1,13 @@
-﻿namespace poscam.AuthServer.Models.Entities;
+using poscam.AuthServer.Models.Enums;
+
+namespace poscam.AuthServer.Models.Entities;
 
 /// <summary>
 /// 매장별 NVR 설정 Entity.
 /// DB 테이블: nvr_configs
-/// 
-/// 캠뷰어가 NVR에 접속하기 위해 필요한 정보를 관리한다.
+///
+/// 캠뷰어가 매장에 등록된 특정 NVR에 직접 접속하기 위해 필요한 정보를 관리한다.
+/// TP-Link VIGI도 클라우드 계정이 아닌 매장 NVR 로컬 접속 정보만 저장한다.
 /// NVR 비밀번호는 이미 암호화된 값을 전달받는 기준이므로
 /// 서버에서는 추가 암호화하지 않고 그대로 저장한다.
 /// </summary>
@@ -16,6 +19,12 @@ public class NvrConfig
     /// DB 컬럼: nvr_store
     /// </summary>
     public int NvrStore { get; set; }
+
+    /// <summary>
+    /// 제조사 및 Provider 고정 코드.
+    /// DB 컬럼: nvr_provider
+    /// </summary>
+    public NvrProviderType NvrProvider { get; set; } = NvrProviderType.Dahua;
 
     /// <summary>
     /// NVR 접속 ID.
@@ -37,10 +46,17 @@ public class NvrConfig
     public string NvrIp { get; set; } = "";
 
     /// <summary>
-    /// NVR 접속 포트.
+    /// 제조사 제어 포트.
+    /// Dahua는 NetSDK 포트, TP-Link VIGI는 로컬 OpenAPI HTTPS 포트이다.
     /// DB 컬럼: nvr_port
     /// </summary>
     public int NvrPort { get; set; }
+
+    /// <summary>
+    /// 영상 재생용 RTSP 포트.
+    /// DB 컬럼: nvr_rtsp_port
+    /// </summary>
+    public int NvrRtspPort { get; set; } = 554;
 
     /// <summary>
     /// NVR 전체 채널 수.
