@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
@@ -10,12 +10,14 @@ namespace poscam.AuthServer.Services;
 
 /// <summary>
 /// 캠뷰어 설정 관리 서비스.
-/// 
+///
 /// NVR 설정 조회, 설정 버전 조회, 설정 동기화를 담당한다.
 /// 설정 정보는 민감한 정보가 포함되므로 토큰 검증 후 제공한다.
 /// </summary>
 public class ConfigService
 {
+    private const int DefaultRtspPort = 554;
+
     private readonly IDbContext _dbContext;
     private readonly StoreRepository _storeRepository;
     private readonly ContractRepository _contractRepository;
@@ -50,9 +52,6 @@ public class ConfigService
 
     /// <summary>
     /// 서버 설정 버전을 조회한다.
-    /// 
-    /// 캠뷰어는 전체 설정을 다운로드하기 전에
-    /// 이 API로 서버 설정이 로컬보다 최신인지 확인할 수 있다.
     /// </summary>
     public async Task<ApiResponse<ConfigVersionResponse>> GetVersionAsync(
         ConfigVersionRequest request,
@@ -72,11 +71,7 @@ public class ConfigService
                 tokenCheck.Message);
         }
 
-        // ValidateViewerTokenAsync()에서 StoreCode 존재 여부와
-        // 실제 매장 존재 여부까지 검증했으므로,
-        // 여기서는 Store 객체의 StoreCode를 안전하게 사용한다.
         var storeCode = tokenCheck.Store!.StoreCode;
-
         var nvrConfig = await _nvrConfigRepository.GetByStoreAsync(storeCode);
 
         if (nvrConfig == null)
@@ -133,9 +128,6 @@ public class ConfigService
 
     /// <summary>
     /// 캠뷰어 최신 설정을 조회한다.
-    /// 
-    /// 토큰과 HWID를 검증한 뒤,
-    /// 해당 매장의 NVR 설정과 채널 매핑 정보를 반환한다.
     /// </summary>
     public async Task<ApiResponse<ViewerConfigResponse>> GetLatestConfigAsync(
         ConfigLatestRequest request,
@@ -155,9 +147,7 @@ public class ConfigService
                 tokenCheck.Message);
         }
 
-        // 검증이 끝난 실제 Store 객체에서 매장코드를 사용한다.
         var storeCode = tokenCheck.Store!.StoreCode;
-
         var nvrConfig = await _nvrConfigRepository.GetByStoreAsync(storeCode);
 
         if (nvrConfig == null)
@@ -182,6 +172,8 @@ public class ConfigService
         }
 
         var channels = await _channelConfigRepository.GetByStoreAsync(storeCode);
+        var provider = NormalizeProvider(nvrConfig.NvrProvider);
+        var rtspPort = NormalizeRtspPort(nvrConfig.NvrRtspPort);
 
         var response = new ViewerConfigResponse
         {
@@ -189,10 +181,12 @@ public class ConfigService
             ConfigVersion = nvrConfig.NvrVersion ?? "",
             NvrConfig = new NvrConfigDto
             {
+                NvrProvider = provider,
                 NvrId = nvrConfig.NvrId,
                 NvrPassword = nvrConfig.NvrPassword,
                 NvrIp = nvrConfig.NvrIp,
                 NvrPort = nvrConfig.NvrPort,
+                NvrRtspPort = rtspPort,
                 NvrChannels = nvrConfig.NvrChannels,
                 NvrVersion = nvrConfig.NvrVersion ?? ""
             },
@@ -215,6 +209,9 @@ public class ConfigService
                 request.Hwid,
                 request.LocalConfigVersion,
                 ServerConfigVersion = response.ConfigVersion,
+                NvrProvider = (int)provider,
+                NvrControlPort = nvrConfig.NvrPort,
+                NvrRtspPort = rtspPort,
                 ChannelCount = response.Channels.Count,
                 request.ProgramVersion,
                 reason = "Latest config downloaded"
@@ -227,9 +224,9 @@ public class ConfigService
 
     /// <summary>
     /// 캠뷰어 설정을 서버에 동기화한다.
-    /// 
-    /// 캠뷰어에서 로컬 설정을 먼저 저장한 뒤,
-    /// 서버 접속이 가능할 때 이 API를 호출해 서버 DB에 반영한다.
+    ///
+    /// 구버전 CamViewer가 Provider/RTSP 포트를 보내지 않는 전환 기간에는
+    /// Provider=Dahua, RTSP=554로 보정한다.
     /// </summary>
     public async Task<ApiResponse<ConfigSyncResponse>> SyncConfigAsync(
         ConfigSyncRequest request,
@@ -249,9 +246,27 @@ public class ConfigService
                 tokenCheck.Message);
         }
 
-        // Viewer 설정은 매장 단위로 관리되므로,
-        // 검증 완료된 Store 객체의 매장코드를 사용한다.
         var storeCode = tokenCheck.Store!.StoreCode;
+
+        if (request.NvrConfig == null)
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR 설정 정보가 없습니다.");
+        }
+
+        var requestedProvider = request.NvrConfig.NvrProvider;
+
+        if (requestedProvider != NvrProviderType.Unknown &&
+            !Enum.IsDefined(typeof(NvrProviderType), requestedProvider))
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR 제조사 코드가 올바르지 않습니다.");
+        }
+
+        var provider = NormalizeProvider(requestedProvider);
+        var rtspPort = NormalizeRtspPort(request.NvrConfig.NvrRtspPort);
 
         if (string.IsNullOrWhiteSpace(request.NvrConfig.NvrIp))
         {
@@ -260,16 +275,46 @@ public class ConfigService
                 "NVR IP를 입력해야 합니다.");
         }
 
-        if (request.NvrConfig.NvrPort <= 0)
+        if (request.NvrConfig.NvrPort < 1 || request.NvrConfig.NvrPort > 65535)
         {
             return ApiResponse<ConfigSyncResponse>.Fail(
                 AuthErrorCode.NvrConfigNotFound,
-                "NVR 포트가 올바르지 않습니다.");
+                "NVR 제어/API 포트는 1부터 65535 사이여야 합니다.");
+        }
+
+        if (rtspPort < 1 || rtspPort > 65535)
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR RTSP 포트는 1부터 65535 사이여야 합니다.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NvrConfig.NvrId))
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR 접속 ID를 입력해야 합니다.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NvrConfig.NvrPassword))
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR 접속 비밀번호를 입력해야 합니다.");
+        }
+
+        if (request.NvrConfig.NvrChannels.GetValueOrDefault() <= 0)
+        {
+            return ApiResponse<ConfigSyncResponse>.Fail(
+                AuthErrorCode.NvrConfigNotFound,
+                "NVR 채널 수는 1 이상이어야 합니다.");
         }
 
         var configVersion = string.IsNullOrWhiteSpace(request.ConfigVersion)
             ? _codeGenerateService.CreateConfigVersion()
             : request.ConfigVersion.Trim();
+
+        var channels = request.Channels ?? new List<ChannelConfigDto>();
 
         using var connection = _dbContext.CreateConnection();
         connection.Open();
@@ -281,10 +326,12 @@ public class ConfigService
             var nvrConfig = new NvrConfig
             {
                 NvrStore = storeCode,
+                NvrProvider = provider,
                 NvrId = request.NvrConfig.NvrId.Trim(),
                 NvrPassword = request.NvrConfig.NvrPassword,
                 NvrIp = request.NvrConfig.NvrIp.Trim(),
                 NvrPort = request.NvrConfig.NvrPort,
+                NvrRtspPort = rtspPort,
                 NvrChannels = request.NvrConfig.NvrChannels,
                 NvrVersion = configVersion
             };
@@ -301,7 +348,7 @@ public class ConfigService
                 transaction,
                 storeCode);
 
-            foreach (var channel in request.Channels)
+            foreach (var channel in channels)
             {
                 var config = new ChannelConfig
                 {
@@ -330,7 +377,10 @@ public class ConfigService
                     {
                         request.Hwid,
                         ConfigVersion = configVersion,
-                        ChannelCount = request.Channels.Count,
+                        NvrProvider = (int)provider,
+                        NvrControlPort = request.NvrConfig.NvrPort,
+                        NvrRtspPort = rtspPort,
+                        ChannelCount = channels.Count,
                         request.ModifiedBy,
                         request.ProgramVersion,
                         LogReason = "Config synced"
@@ -342,7 +392,7 @@ public class ConfigService
             {
                 StoreCode = storeCode,
                 ConfigVersion = configVersion,
-                ChannelCount = request.Channels.Count,
+                ChannelCount = channels.Count,
                 Synced = true
             };
 
@@ -360,12 +410,6 @@ public class ConfigService
     /// <summary>
     /// 캠뷰어 토큰을 검증하고,
     /// devices 테이블에 해당 장비가 존재하는지 확인한다.
-    /// 
-    /// 토큰이 유효하더라도 devices에서 장비가 삭제되어 있으면
-    /// 사용 해제된 장비로 판단한다.
-    /// 
-    /// 캠뷰어는 매장 기반 인증이므로,
-    /// Viewer 토큰에는 StoreCode가 반드시 포함되어야 한다.
     /// </summary>
     private async Task<ViewerTokenCheckResult> ValidateViewerTokenAsync(
         string token,
@@ -448,7 +492,6 @@ public class ConfigService
                 "캠뷰어 토큰에 매장 정보가 없습니다. 다시 로그인해야 합니다.");
         }
 
-        // 이후 로직에서는 int StoreCode로 안전하게 사용한다.
         var storeCode = payload.StoreCode.Value;
 
         // 3. 토큰 HWID와 요청 HWID 일치 여부 확인
@@ -502,7 +545,6 @@ public class ConfigService
         }
 
         // 5. 장비 정보와 토큰 정보 정합성 검증
-        // Viewer 장비는 반드시 매장에 연결되어 있어야 한다.
         if (device.DevAppType != (int)DeviceAppType.Viewer ||
             device.DevStore != storeCode ||
             !string.Equals(
@@ -560,8 +602,6 @@ public class ConfigService
                 "계약 정보를 찾을 수 없습니다.");
         }
 
-        // Viewer는 매장 기반 서비스이므로,
-        // 계약에 연결된 매장과 토큰의 매장이 일치해야 한다.
         if (contract.ConStore != storeCode)
         {
             return ViewerTokenCheckResult.Fail(
@@ -580,6 +620,18 @@ public class ConfigService
         }
 
         return ViewerTokenCheckResult.Ok(payload, device, store, contract);
+    }
+
+    private static NvrProviderType NormalizeProvider(NvrProviderType provider)
+    {
+        return provider == NvrProviderType.Unknown
+            ? NvrProviderType.Dahua
+            : provider;
+    }
+
+    private static int NormalizeRtspPort(int rtspPort)
+    {
+        return rtspPort <= 0 ? DefaultRtspPort : rtspPort;
     }
 
     /// <summary>
@@ -609,9 +661,6 @@ public class ConfigService
 
     /// <summary>
     /// 인증 로그 객체를 생성한다.
-    /// 
-    /// Viewer 토큰이 아니거나 StoreCode가 없는 비정상 요청도
-    /// 로그로 남길 수 있도록 storeCode는 nullable로 받는다.
     /// </summary>
     private static AuthLog CreateAuthLog(
         AuthRequestType requestType,
@@ -634,12 +683,6 @@ public class ConfigService
         };
     }
 
-    /// <summary>
-    /// 단독 인증 로그 저장.
-    /// 
-    /// StoreCode가 없는 잘못된 토큰 요청도 기록할 수 있도록
-    /// storeCode는 nullable로 처리한다.
-    /// </summary>
     private async Task WriteAuthLogAsync(
         AuthRequestType requestType,
         int? storeCode,
@@ -658,9 +701,6 @@ public class ConfigService
                 details));
     }
 
-    /// <summary>
-    /// 오류 코드에 따른 사용자 메시지를 반환한다.
-    /// </summary>
     private static string GetErrorMessage(AuthErrorCode errorCode)
     {
         return errorCode switch
@@ -673,9 +713,6 @@ public class ConfigService
         };
     }
 
-    /// <summary>
-    /// ConfigService 내부에서 사용하는 토큰 검증 결과 객체.
-    /// </summary>
     private class ViewerTokenCheckResult
     {
         public bool Success { get; set; }
@@ -710,7 +747,9 @@ public class ConfigService
             };
         }
 
-        public static ViewerTokenCheckResult Fail(AuthErrorCode errorCode, string message)
+        public static ViewerTokenCheckResult Fail(
+            AuthErrorCode errorCode,
+            string message)
         {
             return new ViewerTokenCheckResult
             {
