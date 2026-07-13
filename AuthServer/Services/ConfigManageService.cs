@@ -1,4 +1,4 @@
-﻿using poscam.AuthServer.Models.Dtos.Common;
+using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
 using poscam.AuthServer.Models.Entities;
@@ -128,10 +128,12 @@ public class ConfigManageService
                 ? null
                 : new ManageNvrConfigDto
                 {
+                    NvrProvider = nvrConfig.NvrProvider,
                     NvrId = nvrConfig.NvrId,
                     HasPassword = !string.IsNullOrWhiteSpace(nvrConfig.NvrPassword),
                     NvrIp = nvrConfig.NvrIp,
                     NvrPort = nvrConfig.NvrPort,
+                    NvrRtspPort = nvrConfig.NvrRtspPort,
                     NvrChannels = nvrConfig.NvrChannels,
                     NvrVersion = nvrConfig.NvrVersion
                 },
