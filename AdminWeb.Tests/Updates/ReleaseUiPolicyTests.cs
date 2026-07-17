@@ -8,13 +8,14 @@ namespace poscam.AdminWeb.Tests.Updates;
 public class ReleaseUiPolicyTests
 {
     [Fact]
-    public void Draft는_수정삭제가_가능하고_Artifact가있을때만_게시할수있다()
+    public void Draft는_수정삭제와_Artifact관리가_가능하고_Artifact가있을때만_게시할수있다()
     {
         Assert.True(ReleaseUiPolicy.CanEdit(ReleaseStatusCodes.Draft));
         Assert.True(ReleaseUiPolicy.CanDelete(ReleaseStatusCodes.Draft));
         Assert.False(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Draft, 0));
         Assert.True(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Draft, 1));
         Assert.False(ReleaseUiPolicy.CanDisable(ReleaseStatusCodes.Draft));
+        Assert.True(ReleaseUiPolicy.CanManageArtifacts(ReleaseStatusCodes.Draft));
         Assert.False(ReleaseUiPolicy.IsReadOnly(ReleaseStatusCodes.Draft));
     }
 
@@ -25,16 +26,19 @@ public class ReleaseUiPolicyTests
         Assert.False(ReleaseUiPolicy.CanDelete(ReleaseStatusCodes.Published));
         Assert.False(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Published, 1));
         Assert.True(ReleaseUiPolicy.CanDisable(ReleaseStatusCodes.Published));
+        Assert.False(ReleaseUiPolicy.CanManageArtifacts(ReleaseStatusCodes.Published));
         Assert.True(ReleaseUiPolicy.IsReadOnly(ReleaseStatusCodes.Published));
     }
 
     [Fact]
-    public void Disabled는_모든변경이_불가능한_읽기전용이다()
+    public void Disabled는_기본정보는_읽기전용이지만_Artifact관리와_재게시가_가능하다()
     {
         Assert.False(ReleaseUiPolicy.CanEdit(ReleaseStatusCodes.Disabled));
         Assert.False(ReleaseUiPolicy.CanDelete(ReleaseStatusCodes.Disabled));
-        Assert.False(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Disabled, 1));
+        Assert.False(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Disabled, 0));
+        Assert.True(ReleaseUiPolicy.CanPublish(ReleaseStatusCodes.Disabled, 1));
         Assert.False(ReleaseUiPolicy.CanDisable(ReleaseStatusCodes.Disabled));
+        Assert.True(ReleaseUiPolicy.CanManageArtifacts(ReleaseStatusCodes.Disabled));
         Assert.True(ReleaseUiPolicy.IsReadOnly(ReleaseStatusCodes.Disabled));
     }
 
