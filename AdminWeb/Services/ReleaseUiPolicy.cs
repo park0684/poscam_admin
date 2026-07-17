@@ -20,12 +20,18 @@ public static class ReleaseUiPolicy
 
     public static bool CanPublish(int status, int artifactCount)
     {
-        return status == ReleaseStatusCodes.Draft && artifactCount > 0;
+        return status is ReleaseStatusCodes.Draft or ReleaseStatusCodes.Disabled
+            && artifactCount > 0;
     }
 
     public static bool CanDisable(int status)
     {
         return status == ReleaseStatusCodes.Published;
+    }
+
+    public static bool CanManageArtifacts(int status)
+    {
+        return status is ReleaseStatusCodes.Draft or ReleaseStatusCodes.Disabled;
     }
 
     public static bool IsReadOnly(int status)
