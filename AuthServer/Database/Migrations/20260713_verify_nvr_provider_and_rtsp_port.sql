@@ -51,15 +51,16 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND COLUMN_NAME IN ('nvr_provider', 'nvr_rtsp_port');
 
 -- 4. Provider 코드와 포트 값의 유효성 확인.
+-- 빈 테이블에서는 SUM()이 NULL이므로 COALESCE로 0건 처리한다.
 SELECT
     COUNT(*) AS total_rows,
-    SUM(CASE WHEN nvr_provider NOT IN (1, 2, 3) THEN 1 ELSE 0 END) AS invalid_provider_rows,
-    SUM(CASE WHEN nvr_port < 1 OR nvr_port > 65535 THEN 1 ELSE 0 END) AS invalid_control_port_rows,
-    SUM(CASE WHEN nvr_rtsp_port < 1 OR nvr_rtsp_port > 65535 THEN 1 ELSE 0 END) AS invalid_rtsp_port_rows,
+    COALESCE(SUM(CASE WHEN nvr_provider NOT IN (1, 2, 3) THEN 1 ELSE 0 END), 0) AS invalid_provider_rows,
+    COALESCE(SUM(CASE WHEN nvr_port < 1 OR nvr_port > 65535 THEN 1 ELSE 0 END), 0) AS invalid_control_port_rows,
+    COALESCE(SUM(CASE WHEN nvr_rtsp_port < 1 OR nvr_rtsp_port > 65535 THEN 1 ELSE 0 END), 0) AS invalid_rtsp_port_rows,
     CASE
-        WHEN SUM(CASE WHEN nvr_provider NOT IN (1, 2, 3) THEN 1 ELSE 0 END) = 0
-         AND SUM(CASE WHEN nvr_port < 1 OR nvr_port > 65535 THEN 1 ELSE 0 END) = 0
-         AND SUM(CASE WHEN nvr_rtsp_port < 1 OR nvr_rtsp_port > 65535 THEN 1 ELSE 0 END) = 0
+        WHEN COALESCE(SUM(CASE WHEN nvr_provider NOT IN (1, 2, 3) THEN 1 ELSE 0 END), 0) = 0
+         AND COALESCE(SUM(CASE WHEN nvr_port < 1 OR nvr_port > 65535 THEN 1 ELSE 0 END), 0) = 0
+         AND COALESCE(SUM(CASE WHEN nvr_rtsp_port < 1 OR nvr_rtsp_port > 65535 THEN 1 ELSE 0 END), 0) = 0
             THEN 'PASS'
         ELSE 'FAIL'
     END AS stored_value_check
