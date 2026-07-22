@@ -47,12 +47,15 @@
                             @onclick="DeleteAsync">
                         Draft 삭제
                     </button>
+                }
+                @if (CanShowPublish)
+                {
                     <button type="button"
                             class="btn btn-success"
-                            disabled="@(_isBusy || _isUploading || ActiveArtifactCount == 0)"
+                            disabled="@(_isBusy || _isUploading || !CanPublish)"
                             title="@(ActiveArtifactCount == 0 ? "게시하려면 활성 Artifact가 필요합니다." : null)"
                             @onclick="PublishAsync">
-                        게시
+                        @(IsDisabled ? "재게시" : "게시")
                     </button>
                 }
                 else if (IsPublished)
@@ -123,7 +126,7 @@
                 </div>
             </div>
 
-            @if (IsDraft)
+            @if (CanManageArtifacts)
             {
                 <ArtifactUploadPanel ReleaseCode="ReleaseCode"
                                      ExistingArtifacts="_detail.Artifacts"
@@ -202,8 +205,16 @@
 
     private bool IsDraft => _detail?.Status == ReleaseStatusCodes.Draft;
     private bool IsPublished => _detail?.Status == ReleaseStatusCodes.Published;
+    private bool IsDisabled => _detail?.Status == ReleaseStatusCodes.Disabled;
+    private bool CanShowPublish => IsDraft || IsDisabled;
     private int ActiveArtifactCount =>
         _detail?.Artifacts.Count(artifact => artifact.Status == 1) ?? 0;
+    private bool CanPublish =>
+        _detail is not null
+        && ReleaseUiPolicy.CanPublish(_detail.Status, ActiveArtifactCount);
+    private bool CanManageArtifacts =>
+        _detail is not null
+        && ReleaseUiPolicy.CanManageArtifacts(_detail.Status);
 
     private async Task LoadAsync()
     {
@@ -319,14 +330,16 @@
 
     private async Task PublishAsync()
     {
-        if (!IsDraft || _isBusy || _isUploading || ActiveArtifactCount == 0)
+        if (!CanPublish || _isBusy || _isUploading)
         {
             return;
         }
 
         var confirmed = await JSRuntime.InvokeAsync<bool>(
             "confirm",
-            "게시 후에는 릴리스 핵심정보와 Artifact를 수정할 수 없습니다. 게시하시겠습니까?");
+            IsDisabled
+                ? "교체된 Artifact의 무결성을 다시 확인한 후 릴리스를 재게시합니다. 계속하시겠습니까?"
+                : "게시 후에는 릴리스 핵심정보와 Artifact를 수정할 수 없습니다. 게시하시겠습니까?");
 
         if (!confirmed)
         {
@@ -335,8 +348,12 @@
 
         await ExecuteLifecycleAsync(
             "publish",
-            "릴리스를 게시했습니다.",
-            "릴리스를 게시하지 못했습니다.");
+            IsDisabled
+                ? "릴리스를 재게시했습니다."
+                : "릴리스를 게시했습니다.",
+            IsDisabled
+                ? "릴리스를 재게시하지 못했습니다."
+                : "릴리스를 게시하지 못했습니다.");
     }
 
     private async Task DisableAsync()
@@ -348,7 +365,7 @@
 
         var confirmed = await JSRuntime.InvokeAsync<bool>(
             "confirm",
-            "배포를 중지하면 다시 게시할 수 없습니다. 중지하시겠습니까?");
+            "배포를 중지하면 Artifact를 교체한 뒤 다시 게시할 수 있습니다. 중지하시겠습니까?");
 
         if (!confirmed)
         {
