@@ -1,4 +1,4 @@
-﻿namespace poscam.AdminWeb.Models.Store;
+namespace poscam.AdminWeb.Models.Store;
 
 /// <summary>
 /// 매장 상세 조회 응답 DTO.
@@ -152,13 +152,27 @@ public class StoreDeviceDto
 
 public class ManageNvrConfigDto
 {
+    /// <summary>
+    /// 고정 Provider 코드: 1=Dahua, 2=TP-Link VIGI, 3=KT Telecop.
+    /// 구형 매장 상세 응답은 기존 운영값인 Dahua를 기본값으로 사용한다.
+    /// </summary>
+    public int NvrProvider { get; set; } = 1;
+
     public string NvrId { get; set; } = "";
 
     public bool HasPassword { get; set; }
 
     public string NvrIp { get; set; } = "";
 
+    /// <summary>
+    /// SDK 또는 로컬 OpenAPI 제어 포트.
+    /// </summary>
     public int NvrPort { get; set; }
+
+    /// <summary>
+    /// 영상 재생용 RTSP 포트.
+    /// </summary>
+    public int NvrRtspPort { get; set; } = 554;
 
     public int NvrChannels { get; set; }
 

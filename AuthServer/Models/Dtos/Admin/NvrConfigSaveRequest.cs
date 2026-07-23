@@ -1,9 +1,12 @@
-﻿namespace poscam.AuthServer.Models.Dtos.Admin;
+using poscam.AuthServer.Models.Enums;
+
+namespace poscam.AuthServer.Models.Dtos.Admin;
 
 /// <summary>
 /// NVR 설정 저장 요청 DTO.
-/// 
-/// 관리자 페이지 또는 캠뷰어 설정 동기화에서 사용할 수 있다.
+///
+/// 현재 운영 정책상 NVR 설정 수정은 캠뷰어 동기화 API가 기준이다.
+/// 기존 관리자 API 호환을 위해 유지하며 동일한 Provider/포트 계약을 사용한다.
 /// </summary>
 public class NvrConfigSaveRequest
 {
@@ -11,6 +14,12 @@ public class NvrConfigSaveRequest
     /// 설정을 저장할 매장 코드.
     /// </summary>
     public int StoreCode { get; set; }
+
+    /// <summary>
+    /// 제조사 및 Provider 고정 코드.
+    /// 기존 요청 호환을 위해 기본값은 Dahua이다.
+    /// </summary>
+    public NvrProviderType NvrProvider { get; set; } = NvrProviderType.Dahua;
 
     /// <summary>
     /// NVR 접속 ID.
@@ -29,9 +38,14 @@ public class NvrConfigSaveRequest
     public string NvrIp { get; set; } = "";
 
     /// <summary>
-    /// NVR 접속 포트.
+    /// SDK 또는 로컬 OpenAPI 제어 포트.
     /// </summary>
     public int NvrPort { get; set; }
+
+    /// <summary>
+    /// 영상 재생용 RTSP 포트.
+    /// </summary>
+    public int NvrRtspPort { get; set; } = 554;
 
     /// <summary>
     /// NVR 채널 수.
