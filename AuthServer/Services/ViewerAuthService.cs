@@ -355,7 +355,9 @@ public class ViewerAuthService
                 "장비 식별값이 올바르지 않습니다.");
         }
 
-        var validation = _tokenService.ValidateToken(request.Token);
+        // 일반 API의 만료 검증은 그대로 유지하고,
+        // 캠뷰어 verify-token에서만 OfflineUntil 범위의 만료 토큰을 회전 발급 후보로 허용한다.
+        var validation = _tokenService.ValidateTokenForRenewal(request.Token);
 
         if (!validation.IsValid || validation.Payload == null)
         {
@@ -366,6 +368,9 @@ public class ViewerAuthService
 
         var payload = validation.Payload;
         var hwid = request.Hwid.Trim();
+        var renewedFromExpiredToken =
+            !payload.IsPermanent &&
+            payload.ExpiresAt < DateTime.UtcNow;
 
         // 1. 캠뷰어용 토큰인지 먼저 확인한다.
         // PC캠 토큰은 StoreCode가 null일 수 있으므로,
@@ -603,7 +608,12 @@ public class ViewerAuthService
                 device.DevCode,
                 contract.ConCode,
                 request.ProgramVersion,
-                reason = "Viewer token verify success"
+                renewedFromExpiredToken,
+                previousExpiresAt = payload.ExpiresAt,
+                previousOfflineUntil = payload.OfflineUntil,
+                reason = renewedFromExpiredToken
+                    ? "Expired viewer token renewed after online state validation"
+                    : "Viewer token verify success"
             });
 
         return ApiResponse<ViewerTokenVerifyResponse>.Ok(
@@ -615,7 +625,9 @@ public class ViewerAuthService
                 ConfigVersion = configVersion,
                 Token = newToken
             },
-            "캠뷰어 토큰 인증이 완료되었습니다.");
+            renewedFromExpiredToken
+                ? "만료된 캠뷰어 토큰을 갱신했습니다."
+                : "캠뷰어 토큰 인증이 완료되었습니다.");
     }
 
     /// <summary>
