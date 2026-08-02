@@ -161,7 +161,7 @@ try {
     if (-not $wasExpiredBeforeVerify) {
         throw @"
 The login token is not expired, so the expired-token renewal path cannot be proven.
-Start the local AuthServer with AuthPolicy__TokenExpireHours=0 and run this script again.
+Start the local AuthServer with AuthPolicy__TokenExpireHours=-1 and run this script again.
 "@
     }
 
