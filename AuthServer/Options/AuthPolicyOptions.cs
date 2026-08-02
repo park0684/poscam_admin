@@ -35,21 +35,26 @@ public sealed class AuthPolicyOptions
     public int PccamOfflineDays { get; set; } = 7;
 
     /// <summary>
-    /// 테스트형 계약의 오프라인 허용일.
+    /// 캠뷰어 정식 인증 후 서버 접속 실패 시 허용할 오프라인 지속 일수.
+    /// 계약 유형과 관계없이 7일 정책을 적용한다.
+    /// </summary>
+    public int ViewerOfflineDays { get; set; } = 7;
+
+    /// <summary>
+    /// 기존 계약 유형별 캠뷰어 오프라인 정책 호환값.
+    /// ViewerOfflineDays가 0 이하로 설정된 경우에만 fallback으로 사용한다.
     /// </summary>
     public int TrialOfflineDays { get; set; } = 1;
 
     /// <summary>
-    /// 구독형 계약의 오프라인 허용일.
+    /// 기존 구독형 캠뷰어 오프라인 정책 호환값.
+    /// ViewerOfflineDays가 0 이하로 설정된 경우에만 fallback으로 사용한다.
     /// </summary>
     public int SubscriptionOfflineDays { get; set; } = 3;
 
     /// <summary>
-    /// 구매형 계약의 오프라인 허용일.
-    /// 
-    /// 구매형은 장기 또는 영구 사용 정책을 적용할 수 있으나,
-    /// 1차 구현에서는 넉넉한 일수로 토큰을 발급하고,
-    /// Legacy Mode에서 isPermanent를 별도로 적용한다.
+    /// 기존 구매형 캠뷰어 오프라인 정책 호환값.
+    /// ViewerOfflineDays가 0 이하로 설정된 경우에만 fallback으로 사용한다.
     /// </summary>
     public int PurchaseOfflineDays { get; set; } = 3650;
 

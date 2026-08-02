@@ -48,9 +48,9 @@ public class TokenService
 
         var offlineUntil = isPermanent
             ? now.AddYears(30)
-        : appType == DeviceAppType.Pccam
-            ? now.AddDays(_options.PccamOfflineDays)
-            : CalculateOfflineUntil(now, contractType);
+            : appType == DeviceAppType.Pccam
+                ? now.AddDays(_options.PccamOfflineDays)
+                : CalculateViewerOfflineUntil(now, contractType);
 
         var payload = new AuthTokenPayloadDto
         {
@@ -81,19 +81,44 @@ public class TokenService
     }
 
     /// <summary>
-    /// 토큰을 검증하고 Payload를 복원한다.
-    /// 
-    /// 검증 항목:
-    /// 1. 토큰 존재 여부
-    /// 2. 토큰 형식
-    /// 3. 서명 일치 여부
-    /// 4. Payload 역직렬화
-    /// 5. 만료 여부
-    /// 
-    /// HWID 비교, deviceCode 존재 여부,
-    /// 라이선스/계약 상태 검증은 각 인증 Service에서 처리한다.
+    /// 일반 API에서 사용할 토큰 검증.
+    ///
+    /// 서명과 Payload가 정상이더라도 실행 토큰 만료 시각이 지나면 거부한다.
+    /// 만료 토큰의 회전 발급은 캠뷰어 verify-token 전용 메서드에서만 허용한다.
     /// </summary>
     public TokenValidationResult ValidateToken(string token)
+    {
+        return ValidateTokenCore(
+            token,
+            allowExpiredWithinOfflinePeriod: false);
+    }
+
+    /// <summary>
+    /// 캠뷰어 verify-token에서 사용할 회전 발급용 검증.
+    ///
+    /// 실행 토큰의 ExpiresAt은 지났더라도 다음 조건을 모두 만족하면
+    /// Payload를 복원하여 ViewerAuthService가 장비·매장·계약 상태를 다시 검증할 수 있게 한다.
+    ///
+    /// - 토큰 형식과 HMAC 서명이 정상
+    /// - Payload 역직렬화 성공
+    /// - 영구 토큰이거나 OfflineUntil이 지나지 않음
+    ///
+    /// 이 메서드만으로 실행을 허용하지 않는다. 호출부에서 HWID, deviceCode,
+    /// 매장, 계약 상태를 반드시 재검증한 뒤 새 토큰을 발급해야 한다.
+    /// </summary>
+    public TokenValidationResult ValidateTokenForRenewal(string token)
+    {
+        return ValidateTokenCore(
+            token,
+            allowExpiredWithinOfflinePeriod: true);
+    }
+
+    /// <summary>
+    /// 토큰 형식, 서명, Payload 및 시간 정책을 검증한다.
+    /// </summary>
+    private TokenValidationResult ValidateTokenCore(
+        string token,
+        bool allowExpiredWithinOfflinePeriod)
     {
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -147,22 +172,43 @@ public class TokenService
                 "토큰 정보가 비어 있습니다.");
         }
 
-        if (!payload.IsPermanent &&
-            payload.ExpiresAt < DateTime.UtcNow)
+        var now = DateTime.UtcNow;
+        var accessTokenExpired =
+            !payload.IsPermanent &&
+            payload.ExpiresAt < now;
+
+        if (accessTokenExpired && !allowExpiredWithinOfflinePeriod)
         {
             return TokenValidationResult.Fail(
                 AuthErrorCode.TokenExpired,
                 "토큰이 만료되었습니다.");
         }
 
+        if (accessTokenExpired && payload.OfflineUntil < now)
+        {
+            return TokenValidationResult.Fail(
+                AuthErrorCode.OfflineExpired,
+                "토큰 갱신 허용 기간이 만료되었습니다. 다시 로그인해야 합니다.");
+        }
+
         return TokenValidationResult.Success(payload);
     }
 
     /// <summary>
-    /// 계약 유형에 따라 오프라인 허용 만료 시각을 계산한다.
+    /// 캠뷰어 오프라인 허용 만료 시각을 계산한다.
+    ///
+    /// ViewerOfflineDays가 양수이면 계약 유형과 관계없이 확정된 캠뷰어 정책을 사용한다.
+    /// 기존 설정과의 호환을 위해 0 이하인 경우에만 계약 유형별 값을 fallback으로 사용한다.
     /// </summary>
-    private DateTime CalculateOfflineUntil(DateTime now, ContractType contractType)
+    private DateTime CalculateViewerOfflineUntil(
+        DateTime now,
+        ContractType contractType)
     {
+        if (_options.ViewerOfflineDays > 0)
+        {
+            return now.AddDays(_options.ViewerOfflineDays);
+        }
+
         return contractType switch
         {
             ContractType.Trial => now.AddDays(_options.TrialOfflineDays),
