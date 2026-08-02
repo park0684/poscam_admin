@@ -48,9 +48,9 @@ public class TokenService
 
         var offlineUntil = isPermanent
             ? now.AddYears(30)
-        : appType == DeviceAppType.Pccam
-            ? now.AddDays(_options.PccamOfflineDays)
-            : CalculateOfflineUntil(now, contractType);
+            : appType == DeviceAppType.Pccam
+                ? now.AddDays(_options.PccamOfflineDays)
+                : CalculateViewerOfflineUntil(now, contractType);
 
         var payload = new AuthTokenPayloadDto
         {
@@ -195,10 +195,20 @@ public class TokenService
     }
 
     /// <summary>
-    /// 계약 유형에 따라 오프라인 허용 만료 시각을 계산한다.
+    /// 캠뷰어 오프라인 허용 만료 시각을 계산한다.
+    ///
+    /// ViewerOfflineDays가 양수이면 계약 유형과 관계없이 확정된 캠뷰어 정책을 사용한다.
+    /// 기존 설정과의 호환을 위해 0 이하인 경우에만 계약 유형별 값을 fallback으로 사용한다.
     /// </summary>
-    private DateTime CalculateOfflineUntil(DateTime now, ContractType contractType)
+    private DateTime CalculateViewerOfflineUntil(
+        DateTime now,
+        ContractType contractType)
     {
+        if (_options.ViewerOfflineDays > 0)
+        {
+            return now.AddDays(_options.ViewerOfflineDays);
+        }
+
         return contractType switch
         {
             ContractType.Trial => now.AddDays(_options.TrialOfflineDays),
