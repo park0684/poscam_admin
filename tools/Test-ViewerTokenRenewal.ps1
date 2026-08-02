@@ -34,6 +34,40 @@ function ConvertTo-PlainText {
     }
 }
 
+function Get-HttpErrorResponseBody {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    $response = $ErrorRecord.Exception.Response
+
+    if ($null -eq $response) {
+        return ""
+    }
+
+    try {
+        $stream = $response.GetResponseStream()
+
+        if ($null -eq $stream) {
+            return ""
+        }
+
+        $reader = New-Object System.IO.StreamReader($stream)
+
+        try {
+            return $reader.ReadToEnd()
+        }
+        finally {
+            $reader.Dispose()
+            $stream.Dispose()
+        }
+    }
+    catch {
+        return ""
+    }
+}
+
 function Invoke-JsonPost {
     param(
         [Parameter(Mandatory = $true)]
@@ -45,11 +79,46 @@ function Invoke-JsonPost {
 
     $json = $Body | ConvertTo-Json -Depth 10
 
-    return Invoke-RestMethod `
-        -Method Post `
-        -Uri $Uri `
-        -ContentType "application/json; charset=utf-8" `
-        -Body $json
+    try {
+        return Invoke-RestMethod `
+            -Method Post `
+            -Uri $Uri `
+            -ContentType "application/json; charset=utf-8" `
+            -Body $json
+    }
+    catch {
+        $statusCode = "unknown"
+
+        if ($null -ne $_.Exception.Response) {
+            try {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            catch {
+                $statusCode = "unknown"
+            }
+        }
+
+        $responseBody = Get-HttpErrorResponseBody -ErrorRecord $_
+        $message = "HTTP request failed. StatusCode=$statusCode, Uri=$Uri"
+
+        if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+            $message += "`r`nResponseBody:`r`n$responseBody"
+        }
+
+        throw $message
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($StoreId) -or
+    $StoreId -eq "테스트 매장 ID" -or
+    $StoreId -eq "실제 매장 ID") {
+    throw "-StoreId에는 예시 문구가 아니라 stores.store_id의 실제 매장 ID를 입력해야 합니다."
+}
+
+if ([string]::IsNullOrWhiteSpace($Hwid) -or
+    $Hwid -eq "기존 캠뷰어 HWID" -or
+    $Hwid -eq "실제 기존 캠뷰어 HWID") {
+    throw "-Hwid에는 예시 문구가 아니라 기존 캠뷰어가 사용하는 실제 HWID를 입력해야 합니다."
 }
 
 $normalizedBaseUrl = $BaseUrl.TrimEnd('/')
