@@ -30,7 +30,7 @@ public class LegacyConfigSyncPolicyTests
     [Theory]
     [InlineData(AuthErrorCode.ConfigSchemaNotSupported)]
     [InlineData(AuthErrorCode.ConfigVersionConflict)]
-    [InlineData(AuthErrorCode.InvalidToken)]
+    [InlineData(AuthErrorCode.TokenInvalid)]
     public void CanContinue_BlocksFailuresThatMustNotReachWritePath(
         AuthErrorCode errorCode)
     {
