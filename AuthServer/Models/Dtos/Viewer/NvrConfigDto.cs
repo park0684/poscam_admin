@@ -9,6 +9,13 @@ namespace poscam.AuthServer.Models.Dtos.Viewer;
 public class NvrConfigDto
 {
     /// <summary>
+    /// 매장 내부 NVR 번호.
+    /// ConfigSchemaVersion 2 이상에서는 필수이며 1 이상의 값을 사용한다.
+    /// 구버전 요청에서 누락된 경우 0으로 바인딩되고 서비스 계층에서 NVR 1로 정규화한다.
+    /// </summary>
+    public int NvrNo { get; set; }
+
+    /// <summary>
     /// 제조사 및 Provider 고정 코드.
     /// 0=미지정, 1=Dahua, 2=TP-Link VIGI, 3=KT Telecop.
     /// </summary>
@@ -48,6 +55,7 @@ public class NvrConfigDto
 
     /// <summary>
     /// NVR 설정 버전.
+    /// 같은 매장의 모든 NVR은 하나의 ConfigVersion을 공유한다.
     /// </summary>
     public string NvrVersion { get; set; } = "";
 }
