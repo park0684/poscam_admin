@@ -43,6 +43,23 @@ public class ConfigController : ControllerBase
     }
 
     /// <summary>
+    /// 설정 API 스키마 기능 조회.
+    ///
+    /// 매장/NVR/인증 정보를 반환하지 않는 정적 capability endpoint다.
+    /// 신규 CamViewer는 다중 NVR 설정을 업로드하기 전에 이 endpoint가 존재하고
+    /// Schema 2를 지원하는지 확인하여 구형 AuthServer에 설정이 축약 저장되는 것을 막는다.
+    /// </summary>
+    [HttpPost("capabilities")]
+    [ProducesResponseType(typeof(ApiResponse<ConfigCapabilitiesResponse>), StatusCodes.Status200OK)]
+    public ActionResult<ApiResponse<ConfigCapabilitiesResponse>> GetCapabilities()
+    {
+        return Ok(
+            ApiResponse<ConfigCapabilitiesResponse>.Ok(
+                new ConfigCapabilitiesResponse(),
+                "설정 API 지원 기능을 조회했습니다."));
+    }
+
+    /// <summary>
     /// 서버 설정 버전 조회 API.
     /// 
     /// 캠뷰어가 전체 설정을 다운로드하기 전에
