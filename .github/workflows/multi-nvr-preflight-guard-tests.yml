@@ -1,0 +1,97 @@
+name: Multi-NVR Preflight Guard Tests
+
+on:
+  pull_request:
+    paths:
+      - "AuthServer/Database/Migrations/20260817_preflight_multi_nvr_config.sql"
+      - ".github/workflows/multi-nvr-preflight-guard-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  detects-inbound-nvr-foreign-key:
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_PWD: root
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: poscam_auth
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MariaDB client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client
+
+      - name: Create legacy schema with inbound NVR foreign key
+        run: |
+          mariadb --host=127.0.0.1 --port=3306 --user=root poscam_auth <<'SQL'
+          CREATE TABLE nvr_configs
+          (
+              nvr_store INT NOT NULL,
+              nvr_provider INT NOT NULL DEFAULT 1,
+              nvr_id VARCHAR(100) NOT NULL,
+              nvr_password VARCHAR(255) NOT NULL,
+              nvr_ip VARCHAR(255) NOT NULL,
+              nvr_port INT NOT NULL,
+              nvr_rtsp_port INT NOT NULL DEFAULT 554,
+              nvr_channels INT NULL,
+              nvr_version VARCHAR(100) NULL,
+              PRIMARY KEY (nvr_store)
+          );
+
+          CREATE TABLE ch_config
+          (
+              chn_store INT NOT NULL,
+              chn_pos INT NOT NULL,
+              chn_ch INT NOT NULL,
+              chn_screen INT NOT NULL,
+              PRIMARY KEY (chn_store, chn_pos, chn_screen)
+          );
+
+          CREATE TABLE legacy_nvr_reference
+          (
+              ref_id INT NOT NULL AUTO_INCREMENT,
+              nvr_store INT NOT NULL,
+              PRIMARY KEY (ref_id),
+              CONSTRAINT fk_legacy_nvr_reference_store
+                  FOREIGN KEY (nvr_store)
+                  REFERENCES nvr_configs (nvr_store)
+          );
+          SQL
+
+      - name: Run preflight
+        run: |
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth \
+            < AuthServer/Database/Migrations/20260817_preflight_multi_nvr_config.sql \
+            | tee /tmp/preflight-output.txt
+
+      - name: Assert inbound foreign key is blocking
+        run: |
+          inbound_fk_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = 'nvr_configs';")"
+
+          test "$inbound_fk_count" = "1"
+          grep -q "FK_REFERENCING:nvr_configs" /tmp/preflight-output.txt
+          grep -q "BLOCKING" /tmp/preflight-output.txt
+          grep -q "fk_legacy_nvr_reference_store" /tmp/preflight-output.txt
+
+      - name: Confirm migration must not be applied in this fixture
+        run: |
+          echo "Preflight correctly detected an inbound FK. The apply migration is intentionally not executed."
