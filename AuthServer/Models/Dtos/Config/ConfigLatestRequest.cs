@@ -2,7 +2,7 @@
 
 /// <summary>
 /// 캠뷰어 최신 설정 조회 요청 DTO.
-/// 
+///
 /// 캠뷰어는 로컬에 저장된 토큰과 현재 HWID를 서버에 전달하여
 /// 설정 다운로드 권한을 확인받는다.
 /// </summary>
@@ -18,6 +18,12 @@ public class ConfigLatestRequest
     /// 토큰에 포함된 HWID와 일치해야 한다.
     /// </summary>
     public string Hwid { get; set; } = "";
+
+    /// <summary>
+    /// 클라이언트가 이해하는 설정 스키마 버전.
+    /// 값이 없거나 2 미만이면 기존 단일 NVR 클라이언트로 본다.
+    /// </summary>
+    public int ConfigSchemaVersion { get; set; }
 
     /// <summary>
     /// 캠뷰어 로컬 설정 버전.
