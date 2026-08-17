@@ -2,6 +2,7 @@
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
+using poscam.AuthServer.Models.Enums;
 using poscam.AuthServer.Services;
 using System.Threading;
 
@@ -84,6 +85,9 @@ public class ConfigController : ControllerBase
     /// 
     /// 캠뷰어가 실행에 필요한 NVR 접속 설정과
     /// POS 번호별 NVR 채널 매핑 정보를 내려받을 때 호출한다.
+    ///
+    /// Schema 1 CamViewer는 정확히 NVR 1 한 대와 NVR 1 소속 채널만
+    /// 손실 없이 표현할 수 있다. NVR 2 한 대만 남은 구성도 Schema 2가 필요하다.
     /// </summary>
     /// <param name="request">최신 설정 조회 요청</param>
     /// <returns>NVR 설정 및 채널 매핑 정보</returns>
@@ -96,6 +100,16 @@ public class ConfigController : ControllerBase
             request,
             GetClientIp());
 
+        if (request.ConfigSchemaVersion < MultiNvrConfigSchemaVersion &&
+            result.Success &&
+            !LegacyConfigSyncPolicy.IsLegacyRepresentable(result.Data))
+        {
+            return Ok(
+                ApiResponse<ViewerConfigResponse>.Fail(
+                    AuthErrorCode.ConfigSchemaNotSupported,
+                    "이 매장의 NVR 번호/채널 설정은 구버전 CamViewer로 안전하게 표현할 수 없습니다. 다중 NVR 설정 스키마를 지원하는 최신 CamViewer가 필요합니다."));
+        }
+
         return Ok(result);
     }
 
@@ -105,9 +119,8 @@ public class ConfigController : ControllerBase
     /// 캠뷰어에서 로컬 설정을 저장한 뒤,
     /// 서버 접속이 가능할 경우 해당 설정을 서버 DB에 업로드한다.
     ///
-    /// Schema 2 미만의 구버전 CamViewer는 단일 NVR 설정만 표현할 수 있다.
-    /// 따라서 서버에 이미 다중 NVR 설정이 존재하는 경우 구버전 업로드가
-    /// 전체 설정을 NVR 1 한 대로 덮어쓰지 못하도록 먼저 차단한다.
+    /// Schema 2 미만의 구버전 CamViewer는 NVR 번호를 보존할 수 없다.
+    /// 따라서 기존 서버 설정이 legacy로 손실 없이 표현 가능한 경우에만 쓰기를 허용한다.
     /// </summary>
     /// <param name="request">설정 동기화 요청</param>
     /// <returns>동기화 결과</returns>
@@ -125,12 +138,15 @@ public class ConfigController : ControllerBase
             if (request.ConfigSchemaVersion < MultiNvrConfigSchemaVersion)
             {
                 /*
-                 * ConfigService.GetLatestConfigAsync는 기존 설정이 다중 NVR이면
-                 * ConfigSchemaNotSupported를 반환한다.
-                 *
                  * 기존 NVR 설정이 아직 없는 신규 매장은 NvrConfigNotFound가 반환되므로
-                 * 그 경우에만 legacy 최초 업로드를 계속 허용한다.
-                 * 그 외 토큰/버전 충돌 등의 실패도 쓰기 전에 그대로 차단한다.
+                 * legacy 최초 단일 NVR 업로드를 계속 허용한다.
+                 *
+                 * 기존 설정이 있으면 다음 조건을 모두 만족해야 legacy write를 허용한다.
+                 * - NVR 정확히 1대
+                 * - NvrNo = 1
+                 * - 모든 채널이 NVR 1 참조
+                 *
+                 * 따라서 NVR 2 한 대만 남은 구성도 legacy write를 차단한다.
                  *
                  * ConfigSyncGate를 잡은 상태에서 검사와 Sync를 연속 실행하므로
                  * 같은 프로세스의 다른 Config Sync가 두 단계 사이에 끼어들 수 없다.
@@ -148,6 +164,14 @@ public class ConfigController : ControllerBase
 
                 if (!LegacyConfigSyncPolicy.CanContinue(existingConfigCheck))
                 {
+                    if (existingConfigCheck.Success)
+                    {
+                        return Ok(
+                            ApiResponse<ConfigSyncResponse>.Fail(
+                                AuthErrorCode.ConfigSchemaNotSupported,
+                                "현재 서버 설정의 NVR 번호/채널 매핑은 구버전 CamViewer로 안전하게 저장할 수 없습니다. 최신 CamViewer가 필요합니다."));
+                    }
+
                     return Ok(
                         ApiResponse<ConfigSyncResponse>.Fail(
                             existingConfigCheck.ErrorCode,
