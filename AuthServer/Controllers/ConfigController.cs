@@ -2,7 +2,6 @@
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
-using poscam.AuthServer.Models.Enums;
 using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
@@ -109,8 +108,7 @@ public class ConfigController : ControllerBase
                 },
                 clientIp);
 
-            if (!existingConfigCheck.Success &&
-                existingConfigCheck.ErrorCode != AuthErrorCode.NvrConfigNotFound)
+            if (!LegacyConfigSyncPolicy.CanContinue(existingConfigCheck))
             {
                 return Ok(
                     ApiResponse<ConfigSyncResponse>.Fail(
