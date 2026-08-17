@@ -3,6 +3,7 @@ using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
 using poscam.AuthServer.Services;
+using System.Threading;
 
 namespace poscam.AuthServer.Controllers;
 
@@ -20,6 +21,19 @@ namespace poscam.AuthServer.Controllers;
 public class ConfigController : ControllerBase
 {
     private const int MultiNvrConfigSchemaVersion = 2;
+
+    /*
+     * Schema 1 업로드 보호는 "현재 서버 설정 확인 → 실제 Sync" 두 단계다.
+     * 두 단계 사이에 다른 Schema 2 Sync가 끼면 legacy 요청이 새 다중 NVR 설정을
+     * 다시 NVR 1 한 대로 덮어쓸 수 있으므로 현재 단일 AuthServer 프로세스에서는
+     * 모든 Config Sync를 직렬화한다.
+     *
+     * 설정 저장은 사용자 조작 시에만 발생하는 저빈도 작업이므로 전역 직렬화 비용은 작다.
+     * AuthServer를 여러 인스턴스로 확장할 경우에는 DB advisory lock 또는
+     * 설정 revision 기반 optimistic concurrency로 교체해야 한다.
+     */
+    private static readonly SemaphoreSlim ConfigSyncGate =
+        new SemaphoreSlim(1, 1);
 
     private readonly ConfigService _configService;
 
@@ -85,43 +99,55 @@ public class ConfigController : ControllerBase
     public async Task<ActionResult<ApiResponse<ConfigSyncResponse>>> SyncConfig(
         [FromBody] ConfigSyncRequest request)
     {
-        var clientIp = GetClientIp();
+        await ConfigSyncGate.WaitAsync();
 
-        if (request.ConfigSchemaVersion < MultiNvrConfigSchemaVersion)
+        try
         {
-            /*
-             * ConfigService.GetLatestConfigAsync는 기존 설정이 다중 NVR이면
-             * ConfigSchemaNotSupported를 반환한다.
-             *
-             * 기존 NVR 설정이 아직 없는 신규 매장은 NvrConfigNotFound가 반환되므로
-             * 그 경우에만 legacy 최초 업로드를 계속 허용한다.
-             * 그 외 토큰/버전 충돌 등의 실패도 쓰기 전에 그대로 차단한다.
-             */
-            var existingConfigCheck = await _configService.GetLatestConfigAsync(
-                new ConfigLatestRequest
+            var clientIp = GetClientIp();
+
+            if (request.ConfigSchemaVersion < MultiNvrConfigSchemaVersion)
+            {
+                /*
+                 * ConfigService.GetLatestConfigAsync는 기존 설정이 다중 NVR이면
+                 * ConfigSchemaNotSupported를 반환한다.
+                 *
+                 * 기존 NVR 설정이 아직 없는 신규 매장은 NvrConfigNotFound가 반환되므로
+                 * 그 경우에만 legacy 최초 업로드를 계속 허용한다.
+                 * 그 외 토큰/버전 충돌 등의 실패도 쓰기 전에 그대로 차단한다.
+                 *
+                 * ConfigSyncGate를 잡은 상태에서 검사와 Sync를 연속 실행하므로
+                 * 같은 프로세스의 다른 Config Sync가 두 단계 사이에 끼어들 수 없다.
+                 */
+                var existingConfigCheck = await _configService.GetLatestConfigAsync(
+                    new ConfigLatestRequest
+                    {
+                        Token = request.Token,
+                        Hwid = request.Hwid,
+                        ConfigSchemaVersion = request.ConfigSchemaVersion,
+                        LocalConfigVersion = request.ConfigVersion,
+                        ProgramVersion = request.ProgramVersion
+                    },
+                    clientIp);
+
+                if (!LegacyConfigSyncPolicy.CanContinue(existingConfigCheck))
                 {
-                    Token = request.Token,
-                    Hwid = request.Hwid,
-                    ConfigSchemaVersion = request.ConfigSchemaVersion,
-                    LocalConfigVersion = request.ConfigVersion,
-                    ProgramVersion = request.ProgramVersion
-                },
+                    return Ok(
+                        ApiResponse<ConfigSyncResponse>.Fail(
+                            existingConfigCheck.ErrorCode,
+                            existingConfigCheck.Message));
+                }
+            }
+
+            var result = await _configService.SyncConfigAsync(
+                request,
                 clientIp);
 
-            if (!LegacyConfigSyncPolicy.CanContinue(existingConfigCheck))
-            {
-                return Ok(
-                    ApiResponse<ConfigSyncResponse>.Fail(
-                        existingConfigCheck.ErrorCode,
-                        existingConfigCheck.Message));
-            }
+            return Ok(result);
         }
-
-        var result = await _configService.SyncConfigAsync(
-            request,
-            clientIp);
-
-        return Ok(result);
+        finally
+        {
+            ConfigSyncGate.Release();
+        }
     }
 
     /// <summary>
