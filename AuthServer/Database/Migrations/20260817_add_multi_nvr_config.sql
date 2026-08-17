@@ -4,9 +4,16 @@
 -- 1. nvr_configs를 매장당 여러 NVR 행을 저장할 수 있도록 확장한다.
 -- 2. ch_config의 각 화면 매핑이 어느 NVR에 속하는지 저장한다.
 --
+-- 필수 실행 순서:
+-- 1. 운영 DB 백업
+-- 2. 20260817_preflight_multi_nvr_config.sql 실행
+-- 3. preflight의 모든 BLOCKING 항목이 0인지 확인
+-- 4. 이 파일 실행
+-- 5. 20260817_verify_multi_nvr_config.sql 실행
+--
 -- 주의:
 -- - 이 파일은 운영 DB에 자동 적용하지 않는다.
--- - 적용 전 운영 DB 백업이 필요하다.
+-- - preflight에서 nvr_configs 참조 FK가 발견되면 이 파일을 실행하지 않는다.
 -- - 기존 단일 NVR 데이터는 NVR 번호 1로 유지한다.
 -- - 신규 Foreign Key는 이번 단계에서 추가하지 않고 서비스 계층에서 참조 무결성을 검증한다.
 
