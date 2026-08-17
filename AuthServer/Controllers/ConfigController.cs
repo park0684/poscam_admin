@@ -2,6 +2,7 @@
 using poscam.AuthServer.Models.Dtos.Common;
 using poscam.AuthServer.Models.Dtos.Config;
 using poscam.AuthServer.Models.Dtos.Viewer;
+using poscam.AuthServer.Models.Enums;
 using poscam.AuthServer.Services;
 
 namespace poscam.AuthServer.Controllers;
@@ -19,6 +20,8 @@ namespace poscam.AuthServer.Controllers;
 [Route("api/config")]
 public class ConfigController : ControllerBase
 {
+    private const int MultiNvrConfigSchemaVersion = 2;
+
     private readonly ConfigService _configService;
 
     public ConfigController(ConfigService configService)
@@ -71,8 +74,10 @@ public class ConfigController : ControllerBase
     /// 
     /// 캠뷰어에서 로컬 설정을 저장한 뒤,
     /// 서버 접속이 가능할 경우 해당 설정을 서버 DB에 업로드한다.
-    /// 
-    /// 서버는 기존 채널 매핑을 삭제한 뒤 전달받은 채널 목록으로 다시 저장한다.
+    ///
+    /// Schema 2 미만의 구버전 CamViewer는 단일 NVR 설정만 표현할 수 있다.
+    /// 따라서 서버에 이미 다중 NVR 설정이 존재하는 경우 구버전 업로드가
+    /// 전체 설정을 NVR 1 한 대로 덮어쓰지 못하도록 먼저 차단한다.
     /// </summary>
     /// <param name="request">설정 동기화 요청</param>
     /// <returns>동기화 결과</returns>
@@ -81,9 +86,42 @@ public class ConfigController : ControllerBase
     public async Task<ActionResult<ApiResponse<ConfigSyncResponse>>> SyncConfig(
         [FromBody] ConfigSyncRequest request)
     {
+        var clientIp = GetClientIp();
+
+        if (request.ConfigSchemaVersion < MultiNvrConfigSchemaVersion)
+        {
+            /*
+             * ConfigService.GetLatestConfigAsync는 기존 설정이 다중 NVR이면
+             * ConfigSchemaNotSupported를 반환한다.
+             *
+             * 기존 NVR 설정이 아직 없는 신규 매장은 NvrConfigNotFound가 반환되므로
+             * 그 경우에만 legacy 최초 업로드를 계속 허용한다.
+             * 그 외 토큰/버전 충돌 등의 실패도 쓰기 전에 그대로 차단한다.
+             */
+            var existingConfigCheck = await _configService.GetLatestConfigAsync(
+                new ConfigLatestRequest
+                {
+                    Token = request.Token,
+                    Hwid = request.Hwid,
+                    ConfigSchemaVersion = request.ConfigSchemaVersion,
+                    LocalConfigVersion = request.ConfigVersion,
+                    ProgramVersion = request.ProgramVersion
+                },
+                clientIp);
+
+            if (!existingConfigCheck.Success &&
+                existingConfigCheck.ErrorCode != AuthErrorCode.NvrConfigNotFound)
+            {
+                return Ok(
+                    ApiResponse<ConfigSyncResponse>.Fail(
+                        existingConfigCheck.ErrorCode,
+                        existingConfigCheck.Message));
+            }
+        }
+
         var result = await _configService.SyncConfigAsync(
             request,
-            GetClientIp());
+            clientIp);
 
         return Ok(result);
     }
