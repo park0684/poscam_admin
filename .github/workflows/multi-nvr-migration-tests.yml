@@ -10,6 +10,8 @@ on:
 jobs:
   migration-mariadb:
     runs-on: ubuntu-latest
+    env:
+      MYSQL_PWD: root
 
     services:
       mariadb:
@@ -35,8 +37,6 @@ jobs:
           sudo apt-get install -y mariadb-client
 
       - name: Create legacy single-NVR baseline schema
-        env:
-          MARIADB_PWD: root
         run: |
           cat > /tmp/legacy-poscam.sql <<'SQL'
           CREATE TABLE nvr_configs
@@ -96,8 +96,6 @@ jobs:
             poscam_auth < /tmp/legacy-poscam.sql
 
       - name: Run migration preflight
-        env:
-          MARIADB_PWD: root
         run: |
           mariadb \
             --host=127.0.0.1 \
@@ -107,8 +105,6 @@ jobs:
             < AuthServer/Database/Migrations/20260817_preflight_multi_nvr_config.sql
 
       - name: Assert preflight blocking conditions are clear
-        env:
-          MARIADB_PWD: root
         run: |
           inbound_fk_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = 'nvr_configs';")"
           duplicate_nvr_store_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM (SELECT nvr_store FROM nvr_configs GROUP BY nvr_store HAVING COUNT(*) > 1) d;")"
@@ -119,8 +115,6 @@ jobs:
           test "$duplicate_channel_key_count" = "0"
 
       - name: Apply multi-NVR migration
-        env:
-          MARIADB_PWD: root
         run: |
           mariadb \
             --host=127.0.0.1 \
@@ -130,8 +124,6 @@ jobs:
             < AuthServer/Database/Migrations/20260817_add_multi_nvr_config.sql
 
       - name: Verify migrated structure and legacy data
-        env:
-          MARIADB_PWD: root
         run: |
           required_columns="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND ((TABLE_NAME = 'nvr_configs' AND COLUMN_NAME = 'nvr_no') OR (TABLE_NAME = 'ch_config' AND COLUMN_NAME = 'chn_nvr_no'));")"
           nvr_pk="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ',') FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nvr_configs' AND CONSTRAINT_NAME = 'PRIMARY';")"
@@ -144,8 +136,6 @@ jobs:
           test "$legacy_channel_nvr_numbers" = "1"
 
       - name: Prove second NVR and cross-NVR channel mapping
-        env:
-          MARIADB_PWD: root
         run: |
           mariadb --host=127.0.0.1 --port=3306 --user=root poscam_auth <<'SQL'
           INSERT INTO nvr_configs
@@ -182,8 +172,6 @@ jobs:
           test "$orphan_count" = "0"
 
       - name: Run verification SQL
-        env:
-          MARIADB_PWD: root
         run: |
           mariadb \
             --host=127.0.0.1 \
@@ -193,8 +181,6 @@ jobs:
             < AuthServer/Database/Migrations/20260817_verify_multi_nvr_config.sql
 
       - name: Verify migration is idempotent
-        env:
-          MARIADB_PWD: root
         run: |
           mariadb \
             --host=127.0.0.1 \
