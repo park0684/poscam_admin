@@ -15,6 +15,14 @@ public class StoreDetailResponse
 
     public StoreDeviceGroupDto Devices { get; set; } = new();
 
+    /// <summary>
+    /// 매장에 등록된 전체 NVR 목록.
+    /// </summary>
+    public List<ManageNvrConfigDto> Nvrs { get; set; } = new();
+
+    /// <summary>
+    /// 기존 단일 NVR 화면 호환용 첫 NVR.
+    /// </summary>
     public ManageNvrConfigDto? NvrConfig { get; set; }
 
     public List<ChannelConfigDto> ChannelConfigs { get; set; } = new();
