@@ -43,9 +43,12 @@
             }
             else
             {
-                <h6 class="mb-2">NVR 설정</h6>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">NVR 설정</h6>
+                    <span class="text-muted small">총 @GetNvrList().Count대</span>
+                </div>
 
-                @if (_config.NvrConfig == null)
+                @if (GetNvrList().Count == 0)
                 {
                     <div class="text-muted mb-3">
                         등록된 NVR 설정이 없습니다.
@@ -53,36 +56,52 @@
                 }
                 else
                 {
-                    <dl class="row mb-3">
-                        <dt class="col-4">제조사</dt>
-                        <dd class="col-8">
-                            @GetProviderName(_config.NvrConfig.NvrProvider)
-                            <span class="text-muted">(@_config.NvrConfig.NvrProvider)</span>
-                        </dd>
+                    <div class="row g-3 mb-4">
+                        @foreach (var nvr in GetNvrList())
+                        {
+                            <div class="col-12 col-xl-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <strong>NVR @nvr.NvrNo</strong>
+                                        <span class="badge text-bg-light">
+                                            @GetProviderName(nvr.NvrProvider)
+                                        </span>
+                                    </div>
 
-                        <dt class="col-4">NVR ID</dt>
-                        <dd class="col-8">@_config.NvrConfig.NvrId</dd>
+                                    <dl class="row mb-0">
+                                        <dt class="col-5">제조사</dt>
+                                        <dd class="col-7">
+                                            @GetProviderName(nvr.NvrProvider)
+                                            <span class="text-muted">(@nvr.NvrProvider)</span>
+                                        </dd>
 
-                        <dt class="col-4">비밀번호</dt>
-                        <dd class="col-8">
-                            @(_config.NvrConfig.HasPassword ? "저장됨" : "없음")
-                        </dd>
+                                        <dt class="col-5">NVR ID</dt>
+                                        <dd class="col-7">@nvr.NvrId</dd>
 
-                        <dt class="col-4">NVR IP</dt>
-                        <dd class="col-8">@_config.NvrConfig.NvrIp</dd>
+                                        <dt class="col-5">비밀번호</dt>
+                                        <dd class="col-7">
+                                            @(nvr.HasPassword ? "저장됨" : "없음")
+                                        </dd>
 
-                        <dt class="col-4">제어/API Port</dt>
-                        <dd class="col-8">@_config.NvrConfig.NvrPort</dd>
+                                        <dt class="col-5">NVR IP</dt>
+                                        <dd class="col-7">@nvr.NvrIp</dd>
 
-                        <dt class="col-4">RTSP Port</dt>
-                        <dd class="col-8">@_config.NvrConfig.NvrRtspPort</dd>
+                                        <dt class="col-5">제어/API Port</dt>
+                                        <dd class="col-7">@nvr.NvrPort</dd>
 
-                        <dt class="col-4">채널 수</dt>
-                        <dd class="col-8">@_config.NvrConfig.NvrChannels</dd>
+                                        <dt class="col-5">RTSP Port</dt>
+                                        <dd class="col-7">@nvr.NvrRtspPort</dd>
 
-                        <dt class="col-4">설정 버전</dt>
-                        <dd class="col-8">@(_config.NvrConfig.NvrVersion ?? "-")</dd>
-                    </dl>
+                                        <dt class="col-5">채널 수</dt>
+                                        <dd class="col-7">@nvr.NvrChannels</dd>
+
+                                        <dt class="col-5">설정 버전</dt>
+                                        <dd class="col-7">@(nvr.NvrVersion ?? "-")</dd>
+                                    </dl>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 }
 
                 <h6 class="mb-2">채널 매핑</h6>
@@ -99,17 +118,21 @@
                         <thead>
                             <tr>
                                 <th>POS 번호</th>
+                                <th>NVR 번호</th>
                                 <th>NVR 채널 번호</th>
-                                <th>화면 번호</th>
+                                <th>화면</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var channel in _config.Channels)
+                            @foreach (var channel in _config.Channels
+                                .OrderBy(x => x.PosNo)
+                                .ThenBy(x => x.Screen))
                             {
                                 <tr>
                                     <td>@channel.PosNo</td>
+                                    <td>@channel.NvrNo</td>
                                     <td>@channel.ChannelNo</td>
-                                    <td>@channel.Screen</td>
+                                    <td>@GetScreenName(channel.Screen)</td>
                                 </tr>
                             }
                         </tbody>
@@ -187,6 +210,36 @@
         }
     }
 
+    /// <summary>
+    /// 신규 Nvrs 목록을 우선 사용하고,
+    /// 구버전 AuthServer 응답에서는 단일 NvrConfig를 fallback으로 표시한다.
+    /// </summary>
+    private List<ManageNvrConfigDto> GetNvrList()
+    {
+        if (_config == null)
+        {
+            return new List<ManageNvrConfigDto>();
+        }
+
+        if (_config.Nvrs != null && _config.Nvrs.Count > 0)
+        {
+            return _config.Nvrs
+                .Where(x => x != null)
+                .OrderBy(x => x.NvrNo)
+                .ToList();
+        }
+
+        if (_config.NvrConfig != null)
+        {
+            return new List<ManageNvrConfigDto>
+            {
+                _config.NvrConfig
+            };
+        }
+
+        return new List<ManageNvrConfigDto>();
+    }
+
     private static string GetProviderName(int provider)
     {
         return provider switch
@@ -195,6 +248,16 @@
             2 => "TP-Link VIGI",
             3 => "KT Telecop",
             _ => "미지정"
+        };
+    }
+
+    private static string GetScreenName(int screen)
+    {
+        return screen switch
+        {
+            0 => "좌측",
+            1 => "우측",
+            _ => screen.ToString()
         };
     }
 
