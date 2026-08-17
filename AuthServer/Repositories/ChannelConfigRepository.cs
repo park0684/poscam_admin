@@ -6,8 +6,9 @@ namespace poscam.AuthServer.Repositories;
 
 /// <summary>
 /// ch_config 테이블 접근 Repository.
-/// 
+///
 /// POS 번호와 NVR 채널 매핑 정보를 저장/조회한다.
+/// 각 화면 매핑은 ChnNvrNo + ChnCh로 실제 영상을 식별한다.
 /// </summary>
 public class ChannelConfigRepository : RepositoryBase
 {
@@ -23,6 +24,7 @@ public class ChannelConfigRepository : RepositoryBase
         const string sql = @"
         SELECT
             chn_store  AS ChnStore,
+            chn_nvr_no AS ChnNvrNo,
             chn_pos    AS ChnPos,
             chn_ch     AS ChnCh,
             chn_screen AS ChnScreen,
@@ -43,9 +45,9 @@ public class ChannelConfigRepository : RepositoryBase
 
     /// <summary>
     /// 채널 매핑 정보를 저장한다.
-    /// 
-    /// PRIMARY KEY가 chn_store + chn_pos + chn_screen이므로
-    /// 같은 위치의 설정이 이미 있으면 채널 번호만 UPDATE한다.
+    ///
+    /// PRIMARY KEY는 chn_store + chn_pos + chn_screen을 유지한다.
+    /// 같은 화면 위치가 이미 있으면 NVR 번호와 채널 번호를 함께 UPDATE한다.
     /// </summary>
     public async Task<int> UpsertAsync(
         IDbConnection connection,
@@ -56,6 +58,7 @@ public class ChannelConfigRepository : RepositoryBase
         INSERT INTO ch_config
         (
             chn_store,
+            chn_nvr_no,
             chn_pos,
             chn_ch,
             chn_screen,
@@ -64,14 +67,16 @@ public class ChannelConfigRepository : RepositoryBase
         VALUES
         (
             @ChnStore,
+            @ChnNvrNo,
             @ChnPos,
             @ChnCh,
             @ChnScreen,
             NOW()
         )
         ON DUPLICATE KEY UPDATE
-            chn_ch    = VALUES(chn_ch),
-            chn_udate = NOW();
+            chn_nvr_no = VALUES(chn_nvr_no),
+            chn_ch     = VALUES(chn_ch),
+            chn_udate  = NOW();
         ";
 
         return await connection.ExecuteAsync(sql, config, transaction);
@@ -79,8 +84,8 @@ public class ChannelConfigRepository : RepositoryBase
 
     /// <summary>
     /// 특정 매장의 채널 매핑을 모두 삭제한다.
-    /// 
-    /// 캠뷰어 설정 동기화에서 전체 설정을 다시 업로드할 때 사용할 수 있다.
+    ///
+    /// 캠뷰어 설정 동기화에서 전체 설정을 다시 업로드할 때 사용한다.
     /// </summary>
     public async Task<int> DeleteByStoreAsync(
         IDbConnection connection,

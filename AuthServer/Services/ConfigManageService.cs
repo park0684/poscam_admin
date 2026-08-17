@@ -43,6 +43,7 @@ public class ConfigManageService
     /// 주의:
     /// - NVR 비밀번호는 직접 반환하지 않는다.
     /// - 비밀번호 존재 여부만 HasPassword로 반환한다.
+    /// - 여러 NVR이 등록된 경우 NvrNo 순서대로 모두 반환한다.
     /// </summary>
     public async Task<ApiResponse<ManageConfigResponse>> GetStoreConfigAsync(
         int storeCode,
@@ -117,33 +118,49 @@ public class ConfigManageService
             }
         }
 
-        var nvrConfig = await _nvrConfigRepository.GetByStoreAsync(storeCode);
+        var nvrConfigs = await _nvrConfigRepository.GetListByStoreAsync(storeCode);
         var channels = await _channelConfigRepository.GetByStoreAsync(storeCode);
+
+        var manageNvrs = nvrConfigs
+            .OrderBy(x => x.NvrNo)
+            .Select(x => new ManageNvrConfigDto
+            {
+                NvrNo = x.NvrNo,
+                NvrProvider = x.NvrProvider,
+                NvrId = x.NvrId,
+                HasPassword = !string.IsNullOrWhiteSpace(x.NvrPassword),
+                NvrIp = x.NvrIp,
+                NvrPort = x.NvrPort,
+                NvrRtspPort = x.NvrRtspPort,
+                NvrChannels = x.NvrChannels,
+                NvrVersion = x.NvrVersion
+            })
+            .ToList();
+
+        var distinctVersions = nvrConfigs
+            .Select(x => x.NvrVersion ?? "")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var response = new ManageConfigResponse
         {
             StoreCode = storeCode,
-            ConfigVersion = nvrConfig?.NvrVersion ?? "",
-            NvrConfig = nvrConfig == null
-                ? null
-                : new ManageNvrConfigDto
-                {
-                    NvrProvider = nvrConfig.NvrProvider,
-                    NvrId = nvrConfig.NvrId,
-                    HasPassword = !string.IsNullOrWhiteSpace(nvrConfig.NvrPassword),
-                    NvrIp = nvrConfig.NvrIp,
-                    NvrPort = nvrConfig.NvrPort,
-                    NvrRtspPort = nvrConfig.NvrRtspPort,
-                    NvrChannels = nvrConfig.NvrChannels,
-                    NvrVersion = nvrConfig.NvrVersion
-                },
+            ConfigVersion = distinctVersions.Count == 1
+                ? distinctVersions[0]
+                : "",
+            Nvrs = manageNvrs,
+            // 기존 단일 NVR 관리자 화면과의 전환기 호환용이다.
+            NvrConfig = manageNvrs.FirstOrDefault(),
             Channels = channels
                 .Select(x => new ChannelConfigDto
                 {
                     PosNo = x.ChnPos,
+                    NvrNo = x.ChnNvrNo,
                     ChannelNo = x.ChnCh,
                     Screen = x.ChnScreen
                 })
+                .OrderBy(x => x.PosNo)
+                .ThenBy(x => x.Screen)
                 .ToList()
         };
 

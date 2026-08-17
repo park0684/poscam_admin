@@ -11,6 +11,13 @@ public class ChannelConfigDto
     public int PosNo { get; set; }
 
     /// <summary>
+    /// 채널이 속한 매장 내부 NVR 번호.
+    /// ConfigSchemaVersion 2 이상에서는 필수이다.
+    /// 구버전 요청에서 누락된 경우 서비스 계층에서 NVR 1로 정규화한다.
+    /// </summary>
+    public int NvrNo { get; set; }
+
+    /// <summary>
     /// NVR 채널 번호.
     /// </summary>
     public int ChannelNo { get; set; }

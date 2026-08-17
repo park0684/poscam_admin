@@ -15,10 +15,18 @@ public class NvrConfig
 {
     /// <summary>
     /// 매장 코드.
-    /// 현재 구조에서는 매장 1개당 NVR 설정 1개를 기준으로 한다.
+    /// 다중 NVR 구조에서는 NvrNo와 함께 복합 식별값을 구성한다.
     /// DB 컬럼: nvr_store
     /// </summary>
     public int NvrStore { get; set; }
+
+    /// <summary>
+    /// 매장 내부 NVR 번호.
+    /// 같은 매장 안에서 유일하며 서버에서 임의 재번호화하지 않는다.
+    /// 기존 단일 NVR 데이터는 1을 사용한다.
+    /// DB 컬럼: nvr_no
+    /// </summary>
+    public int NvrNo { get; set; } = 1;
 
     /// <summary>
     /// 제조사 및 Provider 고정 코드.
@@ -67,7 +75,7 @@ public class NvrConfig
 
     /// <summary>
     /// 설정 버전.
-    /// 캠뷰어 로컬 설정과 서버 설정의 동기화 비교에 사용한다.
+    /// 같은 매장의 모든 NVR 행은 하나의 전체 설정 버전을 공유한다.
     /// DB 컬럼: nvr_version
     /// </summary>
     public string NvrVersion { get; set; } = "";

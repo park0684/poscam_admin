@@ -15,6 +15,14 @@ public class StoreDetailResponse
 
     public StoreDeviceGroupDto Devices { get; set; } = new();
 
+    /// <summary>
+    /// 매장에 등록된 전체 NVR 목록.
+    /// </summary>
+    public List<ManageNvrConfigDto> Nvrs { get; set; } = new();
+
+    /// <summary>
+    /// 기존 단일 NVR 화면 호환용 첫 NVR.
+    /// </summary>
     public ManageNvrConfigDto? NvrConfig { get; set; }
 
     public List<ChannelConfigDto> ChannelConfigs { get; set; } = new();
@@ -153,6 +161,12 @@ public class StoreDeviceDto
 public class ManageNvrConfigDto
 {
     /// <summary>
+    /// 매장 내부 NVR 번호.
+    /// 기존 단일 NVR 응답에서 값이 없으면 0으로 수신될 수 있다.
+    /// </summary>
+    public int NvrNo { get; set; }
+
+    /// <summary>
     /// 고정 Provider 코드: 1=Dahua, 2=TP-Link VIGI, 3=KT Telecop.
     /// 구형 매장 상세 응답은 기존 운영값인 Dahua를 기본값으로 사용한다.
     /// </summary>
@@ -174,7 +188,7 @@ public class ManageNvrConfigDto
     /// </summary>
     public int NvrRtspPort { get; set; } = 554;
 
-    public int NvrChannels { get; set; }
+    public int? NvrChannels { get; set; }
 
     public string? NvrVersion { get; set; }
 }
@@ -182,6 +196,11 @@ public class ManageNvrConfigDto
 public class ChannelConfigDto
 {
     public int PosNo { get; set; }
+
+    /// <summary>
+    /// 채널이 속한 매장 내부 NVR 번호.
+    /// </summary>
+    public int NvrNo { get; set; }
 
     public int ChannelNo { get; set; }
 

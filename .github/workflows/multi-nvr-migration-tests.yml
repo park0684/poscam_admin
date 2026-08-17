@@ -1,0 +1,196 @@
+name: Multi-NVR Migration Tests
+
+on:
+  pull_request:
+    paths:
+      - "AuthServer/Database/Migrations/20260817_*multi_nvr_config.sql"
+      - ".github/workflows/multi-nvr-migration-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  migration-mariadb:
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_PWD: root
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: poscam_auth
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MariaDB client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client
+
+      - name: Create legacy single-NVR baseline schema
+        run: |
+          cat > /tmp/legacy-poscam.sql <<'SQL'
+          CREATE TABLE nvr_configs
+          (
+              nvr_store INT NOT NULL,
+              nvr_provider INT NOT NULL DEFAULT 1,
+              nvr_id VARCHAR(100) NOT NULL,
+              nvr_password VARCHAR(255) NOT NULL,
+              nvr_ip VARCHAR(255) NOT NULL,
+              nvr_port INT NOT NULL,
+              nvr_rtsp_port INT NOT NULL DEFAULT 554,
+              nvr_channels INT NULL,
+              nvr_version VARCHAR(100) NULL,
+              nvr_rdate DATETIME NULL,
+              nvr_udate DATETIME NULL,
+              PRIMARY KEY (nvr_store)
+          );
+
+          CREATE TABLE ch_config
+          (
+              chn_store INT NOT NULL,
+              chn_pos INT NOT NULL,
+              chn_ch INT NOT NULL,
+              chn_screen INT NOT NULL,
+              chn_rdate DATETIME NULL,
+              chn_udate DATETIME NULL,
+              PRIMARY KEY (chn_store, chn_pos, chn_screen)
+          );
+
+          INSERT INTO nvr_configs
+          (
+              nvr_store,
+              nvr_provider,
+              nvr_id,
+              nvr_password,
+              nvr_ip,
+              nvr_port,
+              nvr_rtsp_port,
+              nvr_channels,
+              nvr_version,
+              nvr_rdate
+          )
+          VALUES
+          (1001, 1, 'admin', 'test-password', '192.168.0.101', 37777, 554, 32, 'v1', NOW());
+
+          INSERT INTO ch_config
+          (chn_store, chn_pos, chn_ch, chn_screen, chn_rdate)
+          VALUES
+          (1001, 1, 3, 0, NOW()),
+          (1001, 1, 4, 1, NOW());
+          SQL
+
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth < /tmp/legacy-poscam.sql
+
+      - name: Run migration preflight
+        run: |
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth \
+            < AuthServer/Database/Migrations/20260817_preflight_multi_nvr_config.sql
+
+      - name: Assert preflight blocking conditions are clear
+        run: |
+          inbound_fk_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = 'nvr_configs';")"
+          duplicate_nvr_store_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM (SELECT nvr_store FROM nvr_configs GROUP BY nvr_store HAVING COUNT(*) > 1) d;")"
+          duplicate_channel_key_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM (SELECT chn_store, chn_pos, chn_screen FROM ch_config GROUP BY chn_store, chn_pos, chn_screen HAVING COUNT(*) > 1) d;")"
+
+          test "$inbound_fk_count" = "0"
+          test "$duplicate_nvr_store_count" = "0"
+          test "$duplicate_channel_key_count" = "0"
+
+      - name: Apply multi-NVR migration
+        run: |
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth \
+            < AuthServer/Database/Migrations/20260817_add_multi_nvr_config.sql
+
+      - name: Verify migrated structure and legacy data
+        run: |
+          required_columns="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND ((TABLE_NAME = 'nvr_configs' AND COLUMN_NAME = 'nvr_no') OR (TABLE_NAME = 'ch_config' AND COLUMN_NAME = 'chn_nvr_no'));")"
+          nvr_pk="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ',') FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nvr_configs' AND CONSTRAINT_NAME = 'PRIMARY';")"
+          legacy_nvr_no="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT nvr_no FROM nvr_configs WHERE nvr_store = 1001;")"
+          legacy_channel_nvr_numbers="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT GROUP_CONCAT(DISTINCT chn_nvr_no ORDER BY chn_nvr_no) FROM ch_config WHERE chn_store = 1001;")"
+
+          test "$required_columns" = "2"
+          test "$nvr_pk" = "nvr_store,nvr_no"
+          test "$legacy_nvr_no" = "1"
+          test "$legacy_channel_nvr_numbers" = "1"
+
+      - name: Prove second NVR and cross-NVR channel mapping
+        run: |
+          mariadb --host=127.0.0.1 --port=3306 --user=root poscam_auth <<'SQL'
+          INSERT INTO nvr_configs
+          (
+              nvr_store,
+              nvr_no,
+              nvr_provider,
+              nvr_id,
+              nvr_password,
+              nvr_ip,
+              nvr_port,
+              nvr_rtsp_port,
+              nvr_channels,
+              nvr_version,
+              nvr_rdate
+          )
+          VALUES
+          (1001, 2, 1, 'admin2', 'test-password-2', '192.168.0.102', 37777, 554, 16, 'v1', NOW());
+
+          UPDATE ch_config
+          SET chn_nvr_no = 2,
+              chn_ch = 7
+          WHERE chn_store = 1001
+            AND chn_pos = 1
+            AND chn_screen = 1;
+          SQL
+
+          nvr_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM nvr_configs WHERE nvr_store = 1001;")"
+          right_mapping="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT CONCAT(chn_nvr_no, ':', chn_ch) FROM ch_config WHERE chn_store = 1001 AND chn_pos = 1 AND chn_screen = 1;")"
+          orphan_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM ch_config c LEFT JOIN nvr_configs n ON n.nvr_store = c.chn_store AND n.nvr_no = c.chn_nvr_no WHERE n.nvr_store IS NULL;")"
+
+          test "$nvr_count" = "2"
+          test "$right_mapping" = "2:7"
+          test "$orphan_count" = "0"
+
+      - name: Run verification SQL
+        run: |
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth \
+            < AuthServer/Database/Migrations/20260817_verify_multi_nvr_config.sql
+
+      - name: Verify migration is idempotent
+        run: |
+          mariadb \
+            --host=127.0.0.1 \
+            --port=3306 \
+            --user=root \
+            poscam_auth \
+            < AuthServer/Database/Migrations/20260817_add_multi_nvr_config.sql
+
+          nvr_count="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT COUNT(*) FROM nvr_configs WHERE nvr_store = 1001;")"
+          nvr_pk="$(mariadb --host=127.0.0.1 --port=3306 --user=root --batch --skip-column-names poscam_auth -e "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ',') FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nvr_configs' AND CONSTRAINT_NAME = 'PRIMARY';")"
+
+          test "$nvr_count" = "2"
+          test "$nvr_pk" = "nvr_store,nvr_no"

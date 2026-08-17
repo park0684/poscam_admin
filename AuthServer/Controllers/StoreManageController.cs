@@ -18,17 +18,20 @@ namespace poscam.AuthServer.Controllers;
 public class StoreManageController : ControllerBase
 {
     private readonly StoreManageService _storeManageService;
+    private readonly ConfigManageService _configManageService;
     private readonly AccountService _accountService;
     private readonly AdminPermissionService _adminPermissionService;
     private readonly PartnerUserPermissionService _partnerUserPermissionService;
 
     public StoreManageController(
         StoreManageService storeManageService,
+        ConfigManageService configManageService,
         AccountService accountService,
         AdminPermissionService adminPermissionService,
         PartnerUserPermissionService partnerUserPermissionService)
     {
         _storeManageService = storeManageService;
+        _configManageService = configManageService;
         _accountService = accountService;
         _adminPermissionService = adminPermissionService;
         _partnerUserPermissionService = partnerUserPermissionService;
@@ -67,6 +70,9 @@ public class StoreManageController : ControllerBase
     ///
     /// 매장 기본정보, 담당자 연결, 계약, 라이선스,
     /// PC캠/캠뷰어 장비, NVR 설정, 채널 설정을 한 번에 조회한다.
+    ///
+    /// StoreManageService의 기존 NvrConfig 단일 조회는 전환기 호환용으로 남아 있으나,
+    /// 최종 응답의 NVR/채널 영역은 ConfigManageService의 다중 NVR 조회 결과로 교체한다.
     /// </summary>
     [HttpGet("{storeCode:int}/detail")]
     [ProducesResponseType(typeof(ApiResponse<StoreDetailResponse>), StatusCodes.Status200OK)]
@@ -82,9 +88,30 @@ public class StoreManageController : ControllerBase
                 loginUserResult.Message));
         }
 
+        var loginUser = loginUserResult.Data;
         var result = await _storeManageService.GetStoreDetailAsync(
             storeCode,
-            loginUserResult.Data);
+            loginUser);
+
+        if (!result.Success || result.Data == null)
+        {
+            return Ok(result);
+        }
+
+        var configResult = await _configManageService.GetStoreConfigAsync(
+            storeCode,
+            loginUser);
+
+        if (!configResult.Success || configResult.Data == null)
+        {
+            return Ok(ApiResponse<StoreDetailResponse>.Fail(
+                configResult.ErrorCode,
+                configResult.Message));
+        }
+
+        result.Data.Nvrs = configResult.Data.Nvrs;
+        result.Data.NvrConfig = configResult.Data.NvrConfig;
+        result.Data.ChannelConfigs = configResult.Data.Channels;
 
         return Ok(result);
     }

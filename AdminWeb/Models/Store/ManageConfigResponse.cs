@@ -10,6 +10,15 @@ public class ManageConfigResponse
 
     public string ConfigVersion { get; set; } = "";
 
+    /// <summary>
+    /// 신규 다중 NVR 조회 목록.
+    /// </summary>
+    public List<ManageNvrConfigDto> Nvrs { get; set; } = new();
+
+    /// <summary>
+    /// 기존 단일 NVR 응답 호환용.
+    /// Nvrs가 비어 있을 때 화면 fallback으로 사용한다.
+    /// </summary>
     public ManageNvrConfigDto? NvrConfig { get; set; }
 
     public List<ChannelConfigDto> Channels { get; set; } = new();
